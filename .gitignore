@@ -5,3 +5,9 @@ obj
 *.o
 melon_grc.c
 melon_grc.h
+
+melonDS.elf
+melonDS.nacp
+melonDS.nro
+melonDS.nso
+melonDS.pfs0

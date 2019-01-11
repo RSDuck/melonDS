@@ -31,7 +31,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #     - <libnx folder>/default_icon.jpg
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
-BUILD		:=	build
+BUILD		:=	obj
 SOURCES		:=	src src/switch
 DATA		:=	data
 INCLUDES	:=	src
