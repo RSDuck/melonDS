@@ -687,7 +687,7 @@ void SetScreenLayout()
     glUnmapBuffer(GL_ARRAY_BUFFER);
 
     glBindTexture(GL_TEXTURE_2D, DisplayTex);
-
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     if (!Config::ScreenFilter)
     {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
