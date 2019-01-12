@@ -44,7 +44,10 @@
 using namespace std;
 
 ColorSetId MenuTheme;
-unsigned char *Font, *FontColor;
+GLuint Font, FontColor;
+unsigned int FontWidth, FontHeight;
+
+GLuint PaletteTex;
 
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
@@ -54,13 +57,17 @@ AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
 
 u32 *DisplayBuffer;
+GLuint DisplayTex;
+int DisplayVertexStart;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
 bool Paused, LidClosed;
 
 EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
-GLuint Program, VertArrayObj, VertBufferObj, Texture;
+GLuint Program, VertArrayObj, VertBufferObj;
+int NextVertex = 0;
+const int VertexBufferSize = 1024*32;
 
 const int ClockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
 
@@ -170,24 +177,21 @@ void InitRenderer()
 
     glGenBuffers(1, &VertBufferObj);
     glBindBuffer(GL_ARRAY_BUFFER, VertBufferObj);
+    glBufferData(GL_ARRAY_BUFFER, VertexBufferSize * sizeof(Vertex), NULL, GL_STREAM_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texcoord));
     glEnableVertexAttribArray(1);
-
-    glGenTextures(1, &Texture);
-    glBindTexture(GL_TEXTURE_2D, Texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glUseProgram(Program);
 }
 
 void DeInitRenderer()
 {
-    glDeleteTextures(1, &Texture);
+    glDeleteTextures(1, &PaletteTex);
+    glDeleteTextures(1, &Font);
+    glDeleteTextures(1, &FontColor);
+    glDeleteTextures(1, &DisplayTex);
     glDeleteBuffers(1, &VertBufferObj);
     glDeleteVertexArrays(1, &VertArrayObj);
     glDeleteProgram(Program);
@@ -201,20 +205,58 @@ void DeInitRenderer()
     Display = NULL;
 }
 
-unsigned char *TexFromBMP(string filename)
+GLuint TexFromBMP(string filename, unsigned int& width, unsigned int& height)
 {
     FILE *bmp = melon_fopen(filename.c_str(), "rb");
 
     unsigned char header[54];
     fread(header, sizeof(unsigned char), 54, bmp);
-    int width = *(int*)&header[18];
-    int height = *(int*)&header[22];
+    width = *(unsigned int*)&header[18];
+    height = *(unsigned int*)&header[22];
 
     unsigned char *data = new unsigned char[width * height * 3];
     fread(data, sizeof(unsigned char), width * height * 3, bmp);
 
     fclose(bmp);
-    return data;
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 3);
+    GLuint texture;
+    glGenBuffers(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, width, height);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+        width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+    delete[] data;
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    return texture;
+}
+
+Vertex* AllocVertices(int& drawStart, int n)
+{
+    if (NextVertex + n >= VertexBufferSize)
+    {
+        NextVertex = 0;
+        glInvalidateBufferData(VertBufferObj);
+    }
+
+    drawStart = NextVertex;
+
+    int stride = ((n * sizeof(Vertex) + 63) & ~63) / sizeof(Vertex);
+
+    Vertex* value = (Vertex*)glMapBufferRange(GL_ARRAY_BUFFER,
+        NextVertex * sizeof(Vertex), 
+        stride * sizeof(Vertex), 
+        GL_MAP_INVALIDATE_RANGE_BIT /*| GL_MAP_UNSYNCHRONIZED_BIT*/ | GL_MAP_WRITE_BIT);
+    
+    NextVertex += stride;
+
+    return value;
 }
 
 void DrawString(string str, float x, float y, int size, bool color, bool fromright)
@@ -223,88 +265,57 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
     for (unsigned int i = 0; i < str.size(); i++)
         width += CharWidth[str[i] - 32];
 
-    // Texture dimensions must be divisible by 4
-    int extra = 0;
-    while (width % 4 != 0)
-    {
-        width++;
-        extra++;
-    }
+    glBindTexture(GL_TEXTURE_2D, color ? FontColor : Font);
 
-    unsigned char *font;
-    if (color)
-        font = FontColor;
-    else
-        font = Font;
+    if (fromright)
+        x -= width * size / 48;
 
-    unsigned char *tex = new unsigned char[width * 48 * 3];
-    int currentx = 0;
+    int drawStart;
+    Vertex* vertices = AllocVertices(drawStart, str.size() * 6);
 
     for (unsigned int i = 0; i < str.size(); i++)
     {
-        int col = str[i] - 32;
-        int row = 9;
-        while (col > 9)
-        {
-            col -= 10;
-            row--;
-        }
-
         int cwidth = CharWidth[str[i] - 32];
-        if (i == str.size() - 1)
-            cwidth += extra;
+        float u = (((str[i] - 32) % 10) * 48) / (float)FontWidth;
+        float v = (((str[i] - 32) / 10) * 48) / (float)FontHeight;
+        float uw = cwidth / (float)FontWidth;
+        float uh = 48.f / (float)FontHeight;
 
-        for (int j = 0; j < 48; j++)
-            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
+        Vertex topLeft { {x, y}, {u, 1.f - v} };
+        Vertex topRight { {x + cwidth * size / 48, y}, {u + uw, 1.f - v} };
+        Vertex bottomLeft { {x, y + size}, {u, 1.f - (v + uh)} };
+        Vertex bottomRight { {x + cwidth * size / 48, y + size}, {u + uw, 1.f - (v + uh)} };
 
-        currentx += cwidth;
+        vertices[i * 6 + 0] = topLeft;
+        vertices[i * 6 + 1] = bottomLeft;
+        vertices[i * 6 + 2] = bottomRight;
+
+        vertices[i * 6 + 3] = bottomRight;
+        vertices[i * 6 + 4] = topRight;
+        vertices[i * 6 + 5] = topLeft;
+
+        x += cwidth * size / 48;
     }
+    
+    glUnmapBuffer(GL_ARRAY_BUFFER);
 
-    if (fromright)
-        x -= (width - extra) * size / 48;
-
-    Vertex string[] =
-    {
-        { { x + width * size / 48, y        }, { 1.0f, 1.0f } },
-        { { x,                     y        }, { 0.0f, 1.0f } },
-        { { x,                     y + size }, { 0.0f, 0.0f } },
-        { { x + width * size / 48, y + size }, { 1.0f, 0.0f } }
-    };
-
-    glBufferData(GL_ARRAY_BUFFER, sizeof(string), string, GL_DYNAMIC_DRAW);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, 48, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    delete[] tex;
+    glDrawArrays(GL_TRIANGLES, drawStart, str.size() * 6);
 }
 
 void DrawLine(float x1, float y1, float x2, float y2, bool color)
 {
-    Vertex line[] =
-    {
-        { { x1, y1 }, { 0.0f, 0.0f } },
-        { { x2, y2 }, { 0.0f, 0.0f } }
-    };
+    glBindTexture(GL_TEXTURE_2D, PaletteTex);
 
-    unsigned char tex[3];
-    if (MenuTheme == ColorSetId_Light)
-    {
-        if (color)
-            memset(tex, 205, 3);
-        else
-            memset(tex, 45, 3);
-    }
-    else
-    {
-        if (color)
-            memset(tex, 77, 3);
-        else
-            memset(tex, 255, 3);
-    }
+    float uvIndex = ((MenuTheme << 1) | color) / 4.f;
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(line), line, GL_DYNAMIC_DRAW);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
-    glDrawArrays(GL_LINES, 0, 2);
+    int drawStart;
+    Vertex* vertices = AllocVertices(drawStart, 2);
+    vertices[0] = { { x1, y1 }, { uvIndex, 0.f } };
+    vertices[1] = { { x2, y2 }, { uvIndex, 0.f } };
+
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+
+    glDrawArrays(GL_LINES, drawStart, 2);
 }
 
 void DrawStaticUI()
@@ -324,7 +335,7 @@ void OptionsMenu()
 
         DrawStaticUI();
         DrawLine(90, 124, 1190, 124, true);
-        DrawString(" Back     € OK", 1218, 667, 34, false, true);
+        DrawString("\x81 Back     \x80 OK", 1218, 667, 34, false, true);
 
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -416,7 +427,7 @@ void FilesMenu()
 
             DrawStaticUI();
             DrawLine(90, 124, 1190, 124, true);
-            DrawString("ƒ Exit     ‚ Options      Back     € OK", 1218, 667, 34, false, true);
+            DrawString("\x83 Exit     \x82 Options     \x81 Back     \x80 OK", 1218, 667, 34, false, true);
 
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -617,11 +628,11 @@ void SetScreenLayout()
     {
         { { offsetX_top + width_top, offsetY_top + height_top }, { 1.0f, 1.0f } },
         { { offsetX_top,             offsetY_top + height_top }, { 0.0f, 1.0f } },
-        { { offsetX_top,             offsetY_top              }, { 0.0f, 0.0f } },
-        { { offsetX_top + width_top, offsetY_top              }, { 1.0f, 0.0f } },
+        { { offsetX_top,             offsetY_top              }, { 0.0f, 0.5f } },
+        { { offsetX_top + width_top, offsetY_top              }, { 1.0f, 0.5f } },
 
-        { { offsetX_bot + width_bot, offsetY_bot + height_bot }, { 1.0f, 1.0f } },
-        { { offsetX_bot,             offsetY_bot + height_bot }, { 0.0f, 1.0f } },
+        { { offsetX_bot + width_bot, offsetY_bot + height_bot }, { 1.0f, 0.5f } },
+        { { offsetX_bot,             offsetY_bot + height_bot }, { 0.0f, 0.5f } },
         { { offsetX_bot,             offsetY_bot              }, { 0.0f, 0.0f } },
         { { offsetX_bot + width_bot, offsetY_bot              }, { 1.0f, 0.0f } }
     };
@@ -655,13 +666,34 @@ void SetScreenLayout()
         delete[] copy;
     }
 
+    Vertex* vertices = AllocVertices(DisplayVertexStart, 12);
+
+    vertices[0] = screens[0];
+    vertices[1] = screens[3];
+    vertices[2] = screens[2];
+
+    vertices[3] = screens[1];
+    vertices[4] = screens[0];
+    vertices[5] = screens[2];
+
+    vertices[6 + 0] = screens[4 + 0];
+    vertices[6 + 1] = screens[4 + 3];
+    vertices[6 + 2] = screens[4 + 2];
+
+    vertices[6 + 3] = screens[4 + 1];
+    vertices[6 + 4] = screens[4 + 0];
+    vertices[6 + 5] = screens[4 + 2];
+
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+
+    glBindTexture(GL_TEXTURE_2D, DisplayTex);
+
     if (!Config::ScreenFilter)
     {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_DYNAMIC_DRAW);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
@@ -816,9 +848,6 @@ void PauseMenu()
     else
         glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
     vector<const char*> items = 
     {
         "Resume",
@@ -838,7 +867,7 @@ void PauseMenu()
             glClear(GL_COLOR_BUFFER_BIT);
             DrawStaticUI();
             DrawLine(90, 124, 1190, 124, true);
-            DrawString("€ OK", 1218, 667, 34, false, true);
+            DrawString("\x80 OK", 1218, 667, 34, false, true);
             for (unsigned int i = 0; i < items.size(); i++)
             {
                 DrawString(items[i], 105, 140 + i * 70, 38, i == selection, false);
@@ -907,15 +936,26 @@ int main(int argc, char **argv)
     romfsInit();
     if (MenuTheme == ColorSetId_Light)
     {
-        Font = TexFromBMP("romfs:/lightfont.bmp");
-        FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
+        Font = TexFromBMP("romfs:/lightfont.bmp", FontWidth, FontHeight);
+        FontColor = TexFromBMP("romfs:/lightfont-color.bmp", FontWidth, FontHeight);
     }
     else
     {
-        Font = TexFromBMP("romfs:/darkfont.bmp");
-        FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
+        Font = TexFromBMP("romfs:/darkfont.bmp", FontWidth, FontHeight);
+        FontColor = TexFromBMP("romfs:/darkfont-color.bmp", FontWidth, FontHeight);
     }
     romfsExit();
+
+    glGenTextures(1, &PaletteTex);
+    glBindTexture(GL_TEXTURE_2D, PaletteTex);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 4, 1);
+    uint8_t palette[3 * 4] = {205, 205, 205, 45, 45, 45, 77, 77, 77, 255, 255, 255};
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 3);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4, 1, GL_RGB, GL_UNSIGNED_BYTE, &palette[0]);
+
+    glGenTextures(1, &DisplayTex);
+    glBindTexture(GL_TEXTURE_2D, DisplayTex);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 256, 192 * 2);
 
     EmuDirectory = (char*)"sdmc:/switch/melonds";
     Config::Load();
@@ -931,7 +971,7 @@ int main(int argc, char **argv)
     {
         glClear(GL_COLOR_BUFFER_BIT);
         DrawStaticUI();
-        DrawString("ƒ Exit", 1218, 667, 34, false, true);
+        DrawString("\x83 Exit", 1218, 667, 34, false, true);
         DrawString("One or more of the following required files don't exist or couldn't be accessed:", 90, 124, 38, false, false);
         DrawString("bios7.bin -- ARM7 BIOS", 90, 124 + 38, 38, false, false);
         DrawString("bios9.bin -- ARM9 BIOS", 90, 124 + 38 * 2, 38, false, false);
@@ -1031,10 +1071,8 @@ int main(int argc, char **argv)
         }
 
         glClear(GL_COLOR_BUFFER_BIT);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, DisplayBuffer);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &DisplayBuffer[256 * 192]);
-        glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 192 * 2, GL_BGRA, GL_UNSIGNED_BYTE, DisplayBuffer);
+        glDrawArrays(GL_TRIANGLES, DisplayVertexStart, 12);
         eglSwapBuffers(Display, Surface);
     }
 
