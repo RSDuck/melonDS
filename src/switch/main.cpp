@@ -1473,18 +1473,16 @@ int main(int argc, char* argv[])
 
                 if (ImGui::Begin("Controller settings"))
                 {
-                    bool displayDirty = false;
+                    bool updateRequired = false;
 
                     int newRotation = Config::ControlsRotation;
                     const char* rotations[] = {"0", "90", "180", "270"};
                     ImGui::Combo("Controls Rotation", &newRotation, rotations, 4);
-                    displayDirty |= newRotation != Config::ControlsRotation;
+                    updateRequired |= newRotation != Config::ControlsRotation;
 
-                    if (displayDirty)
+                    if (updateRequired)
                     {
                         Config::ControlsRotation = newRotation;
-
-                        updateScreenLayout(vtxBuffer);
                     }
                 }
                 ImGui::End();
