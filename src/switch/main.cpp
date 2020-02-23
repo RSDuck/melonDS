@@ -48,6 +48,8 @@ int ScreenGap;
 int ScreenLayout;
 int ScreenSizing;
 
+int ControlsRotation;
+
 bool Filtering;
 
 char LastROMFolder[512];
@@ -63,6 +65,8 @@ ConfigEntry PlatformConfigFile[] =
     {"ScreenLayout",   0, &ScreenLayout,   0, NULL, 0},
     {"ScreenSizing",   0, &ScreenSizing,   0, NULL, 0},
     {"Filtering",      0, &Filtering,      1, NULL, 0},
+
+    {"ControlsRotation", 0, &ControlsRotation, 0, NULL, 0},
 
     {"LastROMFolder", 1, LastROMFolder, 0, (char*)"sdmc:/", 511},
 
@@ -1058,9 +1062,36 @@ int main(int argc, char* argv[])
             {
                 for (int i = 0; i < 12; i++)
                 {
-                    if (keysDown & keyMappings[i])
+                    int rotatedKeyMapping = keyMappings[i];
+
+                    if (Config::ControlsRotation > 0 && i >= 4 && i <= 7)
+                    {
+                        switch (Config::ControlsRotation)
+                        {
+                            case 1: // 90 degrees
+                                if (i == 4) rotatedKeyMapping = keyMappings[7]; // right -> down
+                                else if (i == 5) rotatedKeyMapping = keyMappings[6]; // left -> up
+                                else if (i == 6) rotatedKeyMapping = keyMappings[4]; // up -> right
+                                else if (i == 7) rotatedKeyMapping = keyMappings[5]; // down -> left
+                                break;
+                            case 2: // 180 degrees
+                                if (i == 4) rotatedKeyMapping = keyMappings[5]; // right -> left
+                                else if (i == 5) rotatedKeyMapping = keyMappings[4]; // left -> right
+                                else if (i == 6) rotatedKeyMapping = keyMappings[7]; // up -> down
+                                else if (i == 7) rotatedKeyMapping = keyMappings[6]; // down -> up
+                                break;
+                            case 3: // 270 degrees
+                                if (i == 4) rotatedKeyMapping = keyMappings[6]; // right -> up
+                                else if (i == 5) rotatedKeyMapping = keyMappings[7]; // left -> down
+                                else if (i == 6) rotatedKeyMapping = keyMappings[5]; // up -> left
+                                else if (i == 7) rotatedKeyMapping = keyMappings[4]; // down -> right
+                                break;
+                        }
+                    }
+
+                    if (keysDown & rotatedKeyMapping)
                         NDS::PressKey(i > 9 ? i + 6 : i);
-                    if (keysUp & keyMappings[i])
+                    if (keysUp & rotatedKeyMapping)
                         NDS::ReleaseKey(i > 9 ? i + 6 : i);
                 }
 
@@ -1436,6 +1467,24 @@ int main(int argc, char* argv[])
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
                         glBindTexture(GL_TEXTURE_2D, 0);
                         Config::Filtering = newFiltering;
+                    }
+                }
+                ImGui::End();
+
+                if (ImGui::Begin("Controller settings"))
+                {
+                    bool displayDirty = false;
+
+                    int newRotation = Config::ControlsRotation;
+                    const char* rotations[] = {"0", "90", "180", "270"};
+                    ImGui::Combo("Controls Rotation", &newRotation, rotations, 4);
+                    displayDirty |= newRotation != Config::ControlsRotation;
+
+                    if (displayDirty)
+                    {
+                        Config::ControlsRotation = newRotation;
+
+                        updateScreenLayout(vtxBuffer);
                     }
                 }
                 ImGui::End();
