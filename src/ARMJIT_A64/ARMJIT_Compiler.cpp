@@ -356,7 +356,8 @@ const Compiler::CompileFunc A_Comp[ARMInstrInfo::ak_Count] =
     // Branch
     F(BranchImm), F(BranchImm), F(BranchImm), F(BranchXchangeReg), F(BranchXchangeReg),
     // Special
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    &Compiler::Nop
 };
 #undef F
 #define F(x) &Compiler::T_Comp_##x
