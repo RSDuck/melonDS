@@ -594,7 +594,7 @@ void GPU2DBase::VBlankEnd()
     //OBJMosaicY = 0;
     //OBJMosaicYCount = 0;
 
-#ifndef NEONGPU_ENABLED
+#if !defined(NEONGPU_ENABLED) && defined(OGLRENDERER_ENABLED)
     if (Accelerated)
     {
         if ((Num == 0) && (CaptureCnt & (1<<31)) && (((CaptureCnt >> 29) & 0x3) != 1))

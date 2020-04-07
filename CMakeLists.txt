@@ -5,7 +5,7 @@ if (POLICY CMP0076)
     cmake_policy(SET CMP0076 NEW)
 endif()
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 project(melonDS)
@@ -30,6 +30,8 @@ function(detect_architecture symbol arch)
         endif()
     endif()
 endfunction()
+
+option(ENABLE_OGLRENDERER "Enable OpenGL renderer" ON)
 
 detect_architecture("__x86_64__" x86_64)
 detect_architecture("__i386__" x86)

@@ -22,7 +22,6 @@ add_library(core STATIC
 	GPU3D_Soft.cpp
 	NDS.cpp
 	NDSCart.cpp
-	OpenGLSupport.cpp
 	RTC.cpp
 	Savestate.cpp
 	SPI.cpp
@@ -31,10 +30,17 @@ add_library(core STATIC
 	WifiAP.cpp
 )
 
+if (ENABLE_OGLRENDERER)
+	target_sources(core PRIVATE
+		OpenGLSupport.cpp
+	)
+
+	add_definitions(-DOGLRENDERER_ENABLED)
+endif()
+
 if (ARCHITECTURE STREQUAL ARM64)
 	option(ENABLE_NEONGPU "Enable GPU implementation utilising NEON instructions" ON)
 endif()
-
 if (ENABLE_NEONGPU)
 	target_sources(core PRIVATE
 		GPU2D_Neon.cpp
@@ -79,5 +85,9 @@ endif()
 if (WIN32)
 	target_link_libraries(core ole32 comctl32 ws2_32 opengl32)
 else()
-	#target_link_libraries(core GL EGL)
+	if (ENABLE_OGLRENDERER)
+		target_link_libraries(core GL EGL)
+	else()
+		target_link_libraries(core)
+	endif()
 endif()

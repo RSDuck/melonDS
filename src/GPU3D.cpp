@@ -286,7 +286,9 @@ bool Init()
 void DeInit()
 {
     if (Renderer == 0) SoftRenderer::DeInit();
+#ifdef OGLRENDERER_ENABLED
     else               GLRenderer::DeInit();
+#endif
 }
 
 void ResetRenderingState()
@@ -382,7 +384,9 @@ void Reset()
 
     ResetRenderingState();
     if (Renderer == 0) SoftRenderer::Reset();
+#ifdef OGLRENDERER_ENABLED
     else               GLRenderer::Reset();
+#endif
 }
 
 void DoSavestate(Savestate* file)
@@ -612,6 +616,7 @@ void SetEnabled(bool geometry, bool rendering)
 
 int InitRenderer(bool hasGL)
 {
+#ifdef OGLRENDERER_ENABLED
     int renderer = hasGL ? Config::_3DRenderer : 0;
 
     if (renderer == 1)
@@ -619,6 +624,9 @@ int InitRenderer(bool hasGL)
         if (!GLRenderer::Init())
             renderer = 0;
     }
+#else
+    int renderer = 0;
+#endif
 
     if (renderer == 0) SoftRenderer::Init();
 
@@ -631,7 +639,9 @@ int InitRenderer(bool hasGL)
 void DeInitRenderer()
 {
     if (Renderer == 0) SoftRenderer::DeInit();
+#ifdef OGLRENDERER_ENABLED
     else               GLRenderer::DeInit();
+#endif
 }
 
 void UpdateRendererConfig()
@@ -642,7 +652,9 @@ void UpdateRendererConfig()
     }
     else
     {
+#ifdef OGLRENDERER_ENABLED
         GLRenderer::UpdateDisplaySettings();
+#endif
     }
 }
 
@@ -2638,13 +2650,17 @@ void VBlank()
 void VCount215()
 {
     if (Renderer == 0) SoftRenderer::RenderFrame();
+#ifdef OGLRENDERER_ENABLED
     else               GLRenderer::RenderFrame();
+#endif
 }
 
 u32* GetLine(int line)
 {
     if (Renderer == 0) return SoftRenderer::GetLine(line);
+#ifdef OGLRENDERER_ENABLED
     else               return GLRenderer::GetLine(line);
+#endif
 }
 
 u32 WriteBatchToGXFIFO(u32* values, u32 count)

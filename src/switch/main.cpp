@@ -17,12 +17,10 @@
 #include <algorithm>
 #include <vector>
 
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-#include <glad/glad.h>
+#include <deko3d.hpp>
 
 #include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
+#include "imgui/imgui_impl_deko3d.h"
 
 #include "dr_wav.h"
 
@@ -33,10 +31,6 @@
 #ifdef GDB_ENABLED
 #include <gdbstub.h>
 #endif
-
-static EGLDisplay eglDisplay;
-static EGLContext eglCtx;
-static EGLSurface eglSurface;
 
 extern std::unordered_map<u32, u32> arm9BlockFrequency;
 extern std::unordered_map<u32, u32> arm7BlockFrequency;
@@ -81,59 +75,6 @@ ConfigEntry PlatformConfigFile[] =
 };
 }
 
-void InitEGL(NWindow* window)
-{
-    eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    
-    eglInitialize(eglDisplay, NULL, NULL);
-
-    eglBindAPI(EGL_OPENGL_API);
-
-    EGLConfig config;
-    EGLint numConfigs;
-    static const EGLint framebufferAttributeList[] =
-    {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-        EGL_RED_SIZE,     8,
-        EGL_GREEN_SIZE,   8,
-        EGL_BLUE_SIZE,    8,
-        EGL_ALPHA_SIZE,   8,
-        EGL_DEPTH_SIZE,   24,
-        EGL_STENCIL_SIZE, 8,
-        EGL_NONE
-    };
-    eglChooseConfig(eglDisplay, framebufferAttributeList, &config, 1, &numConfigs);
-
-    eglSurface = eglCreateWindowSurface(eglDisplay, config, window, NULL);
-
-    static const EGLint contextAttributeList[] =
-    {
-        EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR,
-        EGL_CONTEXT_MAJOR_VERSION_KHR, 4,
-        EGL_CONTEXT_MINOR_VERSION_KHR, 3,
-        EGL_NONE
-    };
-    eglCtx = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttributeList);
-
-    eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglCtx);
-}
-
-void DeInitEGL()
-{
-    eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(eglDisplay, eglCtx);
-    eglDestroySurface(eglDisplay, eglSurface);
-    eglTerminate(eglDisplay);
-}
-
-void applyOverclock(bool usePCV, ClkrstSession* session, int setting)
-{
-    const int clockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
-    if (usePCV)
-        pcvSetClockRate(PcvModule_CpuBus, clockSpeeds[setting]);
-    else
-        clkrstSetClockRate(session, clockSpeeds[setting]);
-}
 
 // those matrix functions are copied from https://github.com/vurtun/mmx/blob/master/vec.h
 // distributed under the zlib license: https://github.com/vurtun/mmx/blob/master/vec.h#L68
@@ -326,6 +267,184 @@ xm2_scale(float *m, float x, float y)
     #undef M
 }
 
+struct StupidStackBuffer
+{
+    dk::MemBlock block;
+    u32 offset;
+
+    StupidStackBuffer(){}
+
+    StupidStackBuffer(dk::Device gDevice, u32 flags, u32 size)
+    {
+        block = dk::MemBlockMaker{gDevice, size}.setFlags(flags).create();
+        
+        offset = 0;
+    }
+
+    void Destroy()
+    {
+        block.destroy();
+    }
+
+    u32 Allocate(u32 size, u32 align = 0)
+    {
+        offset = (offset + align - 1) & ~(align - 1);
+        assert(offset + size <= block.getSize());
+        u32 result = offset;
+        offset += size;
+        return result;
+    }
+
+    void Reset()
+    {
+        offset = 0;
+    }
+};
+
+dk::Device gDevice;
+dk::Queue gQueue;
+
+dk::CmdBuf gCmdbuf;
+dk::Fence gCmdFence[2];
+u32 gCmdBufMemOffsets[2];
+
+dk::Image gFramebuffers[2];
+
+dk::Swapchain gSwapchain;
+
+StupidStackBuffer textureBuffer;
+StupidStackBuffer codeBuffer;
+StupidStackBuffer dataBuffer;
+StupidStackBuffer tempBuffer;
+
+void dkError(void* userData, const char* context, DkResult result)
+{
+    printf("errorrrrrr %d\n", result);
+}
+
+void graphicsInitialize()
+{
+    gDevice = dk::DeviceMaker{}.setCbError(dkError).create();
+
+    gQueue = dk::QueueMaker{gDevice}.setFlags(DkQueueFlags_Graphics).create();
+
+    textureBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_Image | DkMemBlockFlags_GpuCached, 16*1024*1024);
+    codeBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code, 128*1024);
+    dataBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 1024*1024);
+    tempBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 1024*1024);
+
+    gCmdbuf = dk::CmdBufMaker{gDevice}.create();
+    gCmdBufMemOffsets[0] = dataBuffer.Allocate(1024*64, 1024*64);
+    gCmdBufMemOffsets[1] = dataBuffer.Allocate(1024*64, 1024*64);
+
+    dk::ImageLayout fbLayout;
+    dk::ImageLayoutMaker{gDevice}
+        .setFlags(DkImageFlags_UsageRender | DkImageFlags_UsagePresent | DkImageFlags_HwCompression)
+        .setFormat(DkImageFormat_RGBA8_Unorm)
+        .setDimensions(1280, 720)
+        .initialize(fbLayout);
+
+    u64 fbSize = fbLayout.getSize();
+    u32 fbAlign = fbLayout.getAlignment();
+    std::array<DkImage const*, 2> fbArray;
+    for (int i = 0; i < 2; i++)
+    {
+        u32 memOffset = textureBuffer.Allocate(fbSize, fbAlign);
+
+        gFramebuffers[i].initialize(fbLayout, textureBuffer.block, memOffset);
+
+        fbArray[i] = &gFramebuffers[i];
+    }
+
+    gSwapchain = dk::SwapchainMaker{gDevice, nwindowGetDefault(), fbArray}.create();
+}
+
+void graphicsUpdate(int screenWidth, int screenHeight)
+{
+    int slot = gQueue.acquireImage(gSwapchain);
+
+    gCmdbuf.clear();
+    gCmdFence[slot].wait();
+    gCmdbuf.addMemory(dataBuffer.block, gCmdBufMemOffsets[slot], 1024*64);
+
+    dk::ImageView colorTarget {gFramebuffers[slot]};
+    gCmdbuf.bindRenderTargets(&colorTarget);
+    gCmdbuf.setViewports(0, {{0, 0, 1280, 720}});
+    gCmdbuf.setScissors(0, {{0, 0, 1280, 720}});
+    gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.f, 0.f, 0.f, 0.f);
+
+    ImGui::Render();
+    ImGui_ImplDeko3D_RenderDrawData(ImGui::GetDrawData(), gCmdbuf);
+
+    gCmdbuf.signalFence(gCmdFence[slot]);
+
+    gQueue.submitCommands(gCmdbuf.finishList());
+
+    gQueue.presentImage(gSwapchain, slot);
+}
+
+void graphicsExit()
+{
+    gQueue.waitIdle();
+
+    gCmdbuf.destroy();
+
+    gSwapchain.destroy();
+
+    textureBuffer.Destroy();
+    codeBuffer.Destroy();
+    dataBuffer.Destroy();
+
+    gQueue.destroy();
+
+    gDevice.destroy();
+}
+
+ImGui_GfxDataBlock allocTexture(u32 size, u32 align)
+{
+    ImGui_GfxDataBlock block;
+    block.offset = textureBuffer.Allocate(size, align);
+    block.mem = textureBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocShader(u32 size, u32 align)
+{
+    ImGui_GfxDataBlock block;
+    block.offset = codeBuffer.Allocate(size, align);
+    block.mem = codeBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocData(u32 size, u32 align)
+{
+    ImGui_GfxDataBlock block;
+    block.offset = dataBuffer.Allocate(size, align);
+    block.mem = dataBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocTmp(u32 size, u32 align)
+{
+    ImGui_GfxDataBlock block;
+    block.offset = tempBuffer.Allocate(size, align);
+    block.mem = tempBuffer.block;
+    block.size = size;
+    return block;
+}
+void resetTmp()
+{
+    tempBuffer.Reset();
+}
+
+void applyOverclock(bool usePCV, ClkrstSession* session, int setting)
+{
+    const int clockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
+    if (usePCV)
+        pcvSetClockRate(PcvModule_CpuBus, clockSpeeds[setting]);
+    else
+        clkrstSetClockRate(session, clockSpeeds[setting]);
+}
 
 struct Vertex
 {
@@ -336,7 +455,7 @@ struct Vertex
 float botX, botY, botWidth, botHeight;
 int AutoScreenSizing = 0;
 
-void updateScreenLayout(GLint vbo, int screenWidth, int screenHeight)
+void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
 {
     const Vertex verticesSingleScreen[] =
     {
@@ -520,35 +639,7 @@ void updateScreenLayout(GLint vbo, int screenWidth, int screenHeight)
         botWidth = botMaxX - botMinX;
         botHeight = botMaxY - botMinY;
     }
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 12, vertices, GL_STATIC_DRAW);
 }
-
-const char* vtxShader = R"(
-    #version 330 core
-    layout (location=0) in vec2 in_position;
-    layout (location=1) in vec2 in_uv;
-    out vec2 out_uv;
-    uniform mat4 proj;
-    uniform mat2 texTransform;
-    void main()
-    {
-       gl_Position = proj * vec4(in_position, 0.0, 1.0);
-       out_uv = texTransform * in_uv;
-    }
-)";
-const char* frgShader = R"(
-    #version 330 core
-    out vec4 out_color;
-    in vec2 out_uv;
-    uniform sampler2D inTexture;
-    void main()
-    {
-       out_color = vec4(texture(inTexture, out_uv).xyz, 1.0);
-    }
-)";
-
 
 const u32 keyMappings[] = {
     KEY_A,
@@ -1081,8 +1172,6 @@ const int clockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
 
 int main(int argc, char* argv[])
 {
-    setenv("MESA_NO_ERROR", "1", 1);
-
     /*setenv("EGL_LOG_LEVEL", "debug", 1);
     setenv("MESA_VERBOSE", "all", 1);
     setenv("NOUVEAU_MESA_DEBUG", "1", 1);
@@ -1091,16 +1180,14 @@ int main(int argc, char* argv[])
     setenv("NV50_PROG_DEBUG", "1", 1);
     setenv("NV50_PROG_CHIPSET", "0x120", 1);*/
 
-#ifdef GDB_ENABLED
     socketInitializeDefault();
     int nxlinkSocket = nxlinkStdio();
+#ifdef GDB_ENABLED
     //GDBStub_Init();
     //GDBStub_Breakpoint();
 #endif
 
-    InitEGL(nwindowGetDefault());
-
-    gladLoadGL();
+    romfsInit();
 
     AppletHookCookie aptCookie;
     appletLockExit();
@@ -1135,6 +1222,8 @@ int main(int argc, char* argv[])
     }
     applyOverclock(usePCV, &cpuOverclockSession, Config::SwitchOverclock);
 
+    graphicsInitialize();
+
     ImGui::CreateContext();
     ImGui::StyleColorsClassic();
 
@@ -1145,68 +1234,7 @@ int main(int argc, char* argv[])
     ImGuiIO& io = ImGui::GetIO();
     io.FontGlobalScale = 1.5f;
 
-    ImGui_ImplOpenGL3_Init();
-
-    GLuint screenFB;
-    glGenFramebuffers(1, &screenFB);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFB);
-    GLuint guiTextures[2];
-    glGenTextures(2, guiTextures);
-    glBindTexture(GL_TEXTURE_2D, guiTextures[0]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 2048, 2048, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glBindTexture(GL_TEXTURE_2D, guiTextures[1]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, 2048, 2048, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, NULL);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, guiTextures[0], 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, guiTextures[1], 0);
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-    
-    glEnableVertexAttribArray(0);
-    glVertexAttribBinding(0, 0);
-    glVertexAttribFormat(0, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-    glEnableVertexAttribArray(1);
-    glVertexAttribBinding(1, 0);
-    glVertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, uv));
-
-    GLuint vtxBuffer;
-    glGenBuffers(1, &vtxBuffer);
-    updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
-
-    const Vertex fullscreenQuadVertices[] = {
-        {-1.f, -1.f, 0.f, 0.f}, {1.f, -1.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f},
-        {-1.f, -1.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {-1.f, 1.f, 0.f, 1.f}};
-    GLuint fullscreenQuad;
-    glGenBuffers(1, &fullscreenQuad);
-    glBindBuffer(GL_ARRAY_BUFFER, fullscreenQuad);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex)*6, fullscreenQuadVertices, GL_STATIC_DRAW);
-
-    GLuint shaders[3];
-    GLint projectionUniformLoc = -1, textureUniformLoc = -1, texTransformUniformLoc = -1;
-    if (!OpenGL_BuildShaderProgram(vtxShader, frgShader, shaders, "GUI"))
-        printf("ahhh shaders didn't compile!!!\n");
-    OpenGL_LinkShaderProgram(shaders);
-
-    projectionUniformLoc = glGetUniformLocation(shaders[2], "proj");
-    textureUniformLoc = glGetUniformLocation(shaders[2], "inTexture");
-    texTransformUniformLoc = glGetUniformLocation(shaders[2], "texTransform");
-
-    GLuint screenTexture;
-    glGenTextures(1, &screenTexture);
-    glBindTexture(GL_TEXTURE_2D, screenTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, Config::Filtering ? GL_LINEAR : GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, Config::Filtering ? GL_LINEAR : GL_NEAREST);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 256, 192 * 2);
-    // swap red and blue channel
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_BLUE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
+    ImGui_ImplDeko3D_Init(gDevice, gQueue, allocShader, allocData, allocTexture, allocTmp, resetTmp);
 
     Thread audioThread;
     setupAudio();
@@ -1265,7 +1293,7 @@ int main(int argc, char* argv[])
 
     int mainScreenPos[3];
 
-    while (appletMainLoop())
+    while (appletMainLoop() && running)
     {
         hidScanInput();
 
@@ -1438,14 +1466,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, screenFB);
-
-        ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
-
-        glViewport(0, 0, screenWidth, screenHeight);
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
 
         paused = guiState != 1;
 
@@ -1484,7 +1505,7 @@ int main(int argc, char* argv[])
                 if (guess != AutoScreenSizing)
                 {
                     AutoScreenSizing = guess;
-                    updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                    //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
                 }
             }
 
@@ -1565,7 +1586,7 @@ int main(int argc, char* argv[])
                         ImGui::Text("File: /melonds/%s is missing", requiredFiles[i]);
                 }
                 if (ImGui::Button("Exit"))
-                    break;
+                    running = false;
                 
             }
             ImGui::End();
@@ -1599,7 +1620,7 @@ int main(int argc, char* argv[])
                 
                 if (ImGui::Button("Exit"))
                 {
-                    break;
+                    running = false;
                 }
 
             }
@@ -1622,7 +1643,7 @@ int main(int argc, char* argv[])
                         screenWidth = 720;
                         screenHeight = 1280;
                     }
-                    updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                    //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
                 }
 
                 bool directBoot = Config::DirectBoot;
@@ -1675,27 +1696,6 @@ int main(int argc, char* argv[])
 
         if (guiState > 0)
         {
-            OpenGL_UseShaderProgram(shaders);
-            glBindVertexArray(vao);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 8);
-
-            glBindVertexBuffer(0, vtxBuffer, 0, sizeof(Vertex));
-
-            glBindTexture(GL_TEXTURE_2D, screenTexture);
-            for (int i = 0; i < 2; i++)
-            {
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 192 * i, 256, 192, GL_RGBA, GL_UNSIGNED_BYTE, GPU::Framebuffer[GPU::FrontBuffer][i]);
-            }
-            glUniform1i(textureUniformLoc, 0);
-            float proj[16];
-            xm4_orthographic(proj, 0.f, screenWidth, screenHeight, 0.f, -1.f, 1.f);
-            float texTransform[4] = {1.f, 0.f, 0.f, 1.f,};
-            glUniformMatrix4fv(projectionUniformLoc, 1, GL_FALSE, proj);
-            glUniformMatrix2fv(texTransformUniformLoc, 1, GL_FALSE, texTransform);
-            glDrawArrays(GL_TRIANGLES, 0, 12);
-
-            glBindVertexArray(0);
-
             if (showGui)
             {
                 ImGui::Begin("Navigation");
@@ -1772,19 +1772,19 @@ int main(int argc, char* argv[])
                         Config::ScreenLayout = newLayout;
                         Config::IntegerScaling = newIntegerScale;
 
-                        updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                        //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
                     }
 
                     bool newFiltering = Config::Filtering;
                     ImGui::Checkbox("Filtering", &newFiltering);
                     if (newFiltering != Config::Filtering)
                     {
-                        glBindTexture(GL_TEXTURE_2D, screenTexture);
+                        /*glBindTexture(GL_TEXTURE_2D, screenTexture);
                         GLenum glFilter = newFiltering ? GL_LINEAR : GL_NEAREST;
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, glFilter);
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
                         glBindTexture(GL_TEXTURE_2D, 0);
-                        Config::Filtering = newFiltering;
+                        Config::Filtering = newFiltering;*/
                     }
                 }
                 ImGui::End();
@@ -1822,38 +1822,10 @@ int main(int argc, char* argv[])
             }
         }
 
-        ImGui::Render();
-
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glViewport(0, 0, 1280, 720);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        {
-            glBindVertexArray(vao);
-
-            OpenGL_UseShaderProgram(shaders);
-
-            glBindTexture(GL_TEXTURE_2D, guiTextures[0]);
-            glUniform1i(textureUniformLoc, 0);
-            float proj[16];
-            float texTransform[4] = {screenWidth/2048.f, 0.f, 0.f, screenHeight/2048.f};
-            xm4_orthographic(proj, -1.f, 1.f, -1.f, 1.f, -1.f, 1.f);
-            float rot[16];
-            xm4_rotatef(rot, M_PI_2 * Config::GlobalRotation, 0.f, 0.f, 1.f);
-            xm4_mul(proj, proj, rot);
-            glUniformMatrix4fv(projectionUniformLoc, 1, GL_FALSE, proj);
-            glUniformMatrix2fv(texTransformUniformLoc, 1, GL_FALSE, texTransform);
-            glBindVertexBuffer(0, fullscreenQuad, 0, sizeof(Vertex));
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-
-            glBindVertexArray(0);
-        }
-
-        eglSwapBuffers(eglDisplay, eglSurface);
+        graphicsUpdate(screenWidth, screenHeight);
     }
+
+    running = false;
 
     if (perfRecord)
     {
@@ -1870,7 +1842,6 @@ int main(int argc, char* argv[])
     if (romSramPath)
         delete[] romSramPath;
 
-    running = false;
     threadWaitForExit(&audioThread);
     threadClose(&audioThread);
 
@@ -1879,10 +1850,11 @@ int main(int argc, char* argv[])
 
     free(audMemPool);
 
-    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplDeko3D_Shutdown();
+
     ImGui::DestroyContext();
 
-    DeInitEGL();
+    graphicsExit();
 
     applyOverclock(usePCV, &cpuOverclockSession, 0);
     if (usePCV)
@@ -1900,11 +1872,12 @@ int main(int argc, char* argv[])
     appletUnhook(&aptCookie);
     appletUnlockExit();
 
-#ifdef GDB_ENABLED
     close(nxlinkSocket);
     socketExit();
+#ifdef GDB_ENABLED
     //GDBStub_Shutdown();
 #endif
+    romfsExit();
 
     return 0;
 }
