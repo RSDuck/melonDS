@@ -63,11 +63,11 @@ void ImGui_ImplDeko3D_LoadShader(const char* path, dk::Shader& out)
         rewind(f);
         void* ctrlmem = malloc(header.control_sz);
         size_t read = fread(ctrlmem, header.control_sz, 1, f);
-        assert (read == header.control_sz);
+        assert (read);
 
         ImGui_GfxDataBlock data = g_AllocShader(header.code_sz, DK_SHADER_CODE_ALIGNMENT);
         read = fread(data.GetCpuAddr(), header.code_sz, 1, f);
-        assert(read == header.code_sz);
+        assert(read);
 
         dk::ShaderMaker{data.mem, data.offset}
             .setControl(ctrlmem)

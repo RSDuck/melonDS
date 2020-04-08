@@ -278,7 +278,7 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     if (guiState == 1)
         gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.0f, 0.0f, 0.0f, 0.f);
     else
-        gCmdbuf.clearColor(0, DkColorMask_RGBA, 27.f/255.f, 43.f/255.f, 67.f/255.f, 0.f);
+        gCmdbuf.clearColor(0, DkColorMask_RGBA, 170.f/255.f, 53.f/255.f, 97.f/255.f, 0.f);
 
     ImGui_ImplDeko3D_SetupRenderState(gCmdbuf);
 
@@ -1088,7 +1088,6 @@ int main(int argc, char* argv[])
     setenv("NV50_PROG_OPTIMIZE", "0", 1);
     setenv("NV50_PROG_DEBUG", "1", 1);
     setenv("NV50_PROG_CHIPSET", "0x120", 1);*/
-
 #ifdef GDB_ENABLED
     socketInitializeDefault();
     int nxlinkSocket = nxlinkStdio();
@@ -1294,6 +1293,26 @@ int main(int argc, char* argv[])
                     microphoneState = 0;
 
                 feedMicAudio(microphoneState);
+
+                if (keysDown & KEY_ZR)
+                {
+                    switch (Config::ScreenSizing)
+                    {
+                    case 0:
+                        Config::ScreenSizing = AutoScreenSizing == 0 ? 1 : AutoScreenSizing;
+                        break;
+                    case 1:
+                        Config::ScreenSizing = 2;
+                        break;
+                    case 2:
+                        Config::ScreenSizing = 1;
+                        break;
+                    case 3:
+                        Config::ScreenSizing = AutoScreenSizing == 2 ? 1 : 2;
+                        break;
+                    }
+                    updateScreenLayout(screenWidth, screenHeight);
+                }
             }
             else
             {
@@ -1585,7 +1604,6 @@ int main(int argc, char* argv[])
 
             if (ImGui::Begin("Help"))
             {
-                ImGui::BulletText("Put roms into /roms/ds");
                 ImGui::BulletText("Use the Dpad to navigate the GUI");
                 ImGui::BulletText("Press A to select");
                 ImGui::BulletText("Press B to cancel");
@@ -1613,6 +1631,8 @@ int main(int argc, char* argv[])
             if (showGui)
             {
                 ImGui::Begin("Navigation");
+                ImGui::BulletText("Hide/unhide GUI using ZL");
+                ImGui::BulletText("Press ZR to quickly switch screen emphasis");
                 if (navInput)
                     navInput = navInput && !ImGui::Button("Give key input back to game");
                 else
