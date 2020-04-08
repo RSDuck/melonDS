@@ -19,6 +19,8 @@
 
 #include <deko3d.hpp>
 
+#include "vec.h"
+
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_deko3d.h"
 
@@ -75,198 +77,6 @@ ConfigEntry PlatformConfigFile[] =
 };
 }
 
-
-// those matrix functions are copied from https://github.com/vurtun/mmx/blob/master/vec.h
-// distributed under the zlib license: https://github.com/vurtun/mmx/blob/master/vec.h#L68
-#define xv_zero_array(p,n) xv_zero_size(p, (n) * (int)sizeof((p)[0]))
-void xv_zero_size(void *ptr, int size)
-{
-    memset(ptr, 0, size);
-}
-void
-xm4_orthographic(float *m, float left, float right, float bottom, float top,
-    float near, float far)
-{
-    #define M(col, row) m[(col<<2)+row]
-    xv_zero_array(m, 16);
-    M(0,0) = 2.0f/(right-left);
-    M(1,1) = 2.0f/(top-bottom);
-    M(2,2) = -2.0f/(far - near);
-    M(3,0) = -(right+left)/(right-left);
-    M(3,1) = -(top+bottom)/(top-bottom);
-    M(3,2) = -(far+near)/(far-near);
-    M(3,3) = 1.0f;
-    #undef M
-}
-
-#define MMX_MEMCPY memcpy
-#define MMX_SIN sin
-#define MMX_COS cos
-
-void
-xm4_mul(float *product, const float *m1, const float *m2)
-{
-    int i;
-    float a[16], b[16], o[16];
-    #define A(col, row) a[(col << 2)+row]
-    #define B(col, row) b[(col << 2)+row]
-    #define P(col, row) o[(col << 2)+row]
-
-    /* load */
-    MMX_MEMCPY(a, m1, sizeof(a));
-    MMX_MEMCPY(b, m2, sizeof(b));
-
-    /* calculate */
-    for (i = 0; i < 4; ++i) {
-        const float ai0 = A(i,0), ai1 = A(i,1), ai2 = A(i,2), ai3 = A(i,3);
-        P(i,0) = ai0 * B(0,0) + ai1 * B(1,0) + ai2 * B(2,0) + ai3 * B(3,0);
-        P(i,1) = ai0 * B(0,1) + ai1 * B(1,1) + ai2 * B(2,1) + ai3 * B(3,1);
-        P(i,2) = ai0 * B(0,2) + ai1 * B(1,2) + ai2 * B(2,2) + ai3 * B(3,2);
-        P(i,3) = ai0 * B(0,3) + ai1 * B(1,3) + ai2 * B(2,3) + ai3 * B(3,3);
-    }
-
-    /* store */
-    MMX_MEMCPY(product, o, sizeof(o));
-    #undef A
-    #undef B
-    #undef P
-}
-
-void
-xm3_rotate(float *m, float angle, float X, float Y, float Z)
-{
-    #define M(col, row) m[(col*3)+row]
-#ifdef MMX_USE_DEGREES
-    float s = (float)MMX_SIN(MMX_DEG2RAD(angle));
-    float c = (float)MMX_COS(MMX_DEG2RAD(angle));
-#else
-    float s = (float)MMX_SIN(angle);
-    float c = (float)MMX_COS(angle);
-#endif
-    float oc = 1.0f - c;
-    M(0,0) = oc * X * X + c;
-    M(0,1) = oc * X * Y - Z * s;
-    M(0,2) = oc * Z * X + Y * s;
-
-    M(1,0) = oc * X * Y + Z * s;
-    M(1,1) = oc * Y * Y + c;
-    M(1,2) = oc * Y * Z - X * s;
-
-    M(2,0) = oc * Z * X - Y * s;
-    M(2,1) = oc * Y * Z + X * s;
-    M(2,2) = oc * Z * Z + c;
-    #undef M
-}
-
-void
-xm4_from_mat3(float *r, const float *m)
-{
-    #define M(col, row) r[(col<<2)+row]
-    #define T(col, row) m[(col*3)+row]
-    M(0,0) = T(0,0); M(0,1) = T(0,1); M(0,2) = T(0,2); M(0,3) = 0;
-    M(1,0) = T(1,0); M(1,1) = T(1,1); M(1,2) = T(1,2); M(1,3) = 0;
-    M(2,0) = T(2,0); M(2,1) = T(2,1); M(2,2) = T(2,2); M(2,3) = 0;
-    M(3,0) = 0; M(3,1) = 0; M(3,2) = 0; M(3,3) = 1;
-    #undef M
-    #undef T
-}
-
-void
-xm4_rotatef(float *m, float angle, float X, float Y, float Z)
-{
-    float t[9];
-    xm3_rotate(t, angle, X, Y, Z);
-    xm4_from_mat3(m, t);
-}
-
-#define xv2_cpy(to,from)    (to)[0]=(from)[0], (to)[1]=(from)[1]
-void
-xm4_scalev(float *m, float x, float y, float z)
-{
-    #define M(col, row) m[(col<<2)+row]
-    xv_zero_array(m, 16);
-    M(0,0) = x;
-    M(1,1) = y;
-    M(2,2) = z;
-    M(3,3) = 1.0f;
-    #undef M
-}
-
-void
-xm2_mul(float *product, const float *m1, const float *m2)
-{
-    #define A(col, row) a[(col<<1)+row]
-    #define B(col, row) b[(col<<1)+row]
-    #define P(col, row) o[(col<<1)+row]
-
-    /* load */
-    float a[4], b[4], o[4];
-    MMX_MEMCPY(a, m1, sizeof(a));
-    MMX_MEMCPY(b, m2, sizeof(b));
-
-    /* calculate */
-    P(0,0) = A(0,0) * B(0,0) + A(0,1) * B(1,0);
-    P(0,1) = A(0,0) * B(0,1) + A(0,1) * B(1,1);
-    P(1,0) = A(1,0) * B(0,0) + A(1,1) * B(1,0);
-    P(1,1) = A(1,0) * B(0,1) + A(1,1) * B(1,1);
-
-    /* store */
-    MMX_MEMCPY(product, o, sizeof(o));
-
-    #undef A
-    #undef B
-    #undef P
-}
-
-
-void
-xm2_transform(float *r, const float *m, const float *vec)
-{
-    float v[2], o[2];
-    #define X(a) a[0]
-    #define Y(a) a[1]
-    #define M(col, row) m[(col<<1)+row]
-
-    xv2_cpy(v, vec);
-    X(o) = M(0,0)*X(v) + M(0,1)*Y(v);
-    Y(o) = M(1,0)*X(v) + M(1,1)*Y(v);
-    xv2_cpy(r, o);
-
-    #undef X
-    #undef Y
-    #undef M
-}
-
-void
-xm2_rotate(float *m, float angle)
-{
-    #define M(col, row) m[(col<<1)+row]
-#ifdef MMX_USE_DEGREES
-    float s = (float)MMX_SIN(MMX_DEG2RAD(angle));
-    float c = (float)MMX_COS(MMX_DEG2RAD(angle));
-#else
-    float s = (float)MMX_SIN(angle);
-    float c = (float)MMX_COS(angle);
-#endif
-    if (angle >= 0) {
-        M(0,0) =  c; M(0,1) = s;
-        M(1,0) = -s; M(1,1) = c;
-    } else {
-        M(0,0) =  c; M(0,1) = -s;
-        M(1,0) =  s; M(1,1) =  c;
-    }
-    #undef M
-}
-
-void
-xm2_scale(float *m, float x, float y)
-{
-    #define M(col, row) m[(col<<1)+row]
-    M(0,0) = x; M(0,1) = 0;
-    M(0,0) = 0; M(0,1) = y;
-    #undef M
-}
-
 struct StupidStackBuffer
 {
     dk::MemBlock block;
@@ -289,6 +99,7 @@ struct StupidStackBuffer
     u32 Allocate(u32 size, u32 align = 0)
     {
         offset = (offset + align - 1) & ~(align - 1);
+        size = (size + align - 1) & ~(align - 1);
         assert(offset + size <= block.getSize());
         u32 result = offset;
         offset += size;
@@ -306,7 +117,7 @@ dk::Queue gQueue;
 
 dk::CmdBuf gCmdbuf;
 dk::Fence gCmdFence[2];
-u32 gCmdBufMemOffsets[2];
+ImGui_GfxDataBlock gCmdbufData[2];
 
 dk::Image gFramebuffers[2];
 
@@ -316,6 +127,60 @@ StupidStackBuffer textureBuffer;
 StupidStackBuffer codeBuffer;
 StupidStackBuffer dataBuffer;
 StupidStackBuffer tempBuffer;
+
+dk::Image rotatedFb, screenTexture;
+
+ImGui_GfxDataBlock fullscreenQuadMem;
+ImGui_GfxDataBlock screenVerticesMem;
+
+static const ImDrawVert fullscreenQuadData[] =
+{
+    {{-1.f, -1.f}, {0.f, 1.f}, 0xFFFFFFFF},
+    {{-1.f, 1.f}, {0.f, 0.f}, 0xFFFFFFFF},
+    {{1.f, 1.f}, {1.f, 0.f}, 0xFFFFFFFF},
+    {{1.f, -1.f}, {1.f, 1.f}, 0xFFFFFFFF},
+};
+
+ImGui_GfxDataBlock allocTexture(u32 size, u32 align)
+{
+    size = (size + align - 1) & ~(align - 1);
+    ImGui_GfxDataBlock block;
+    block.offset = textureBuffer.Allocate(size, align);
+    block.mem = textureBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocShader(u32 size, u32 align)
+{
+    size = (size + align - 1) & ~(align - 1);
+    ImGui_GfxDataBlock block;
+    block.offset = codeBuffer.Allocate(size, align);
+    block.mem = codeBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocData(u32 size, u32 align)
+{
+    size = (size + align - 1) & ~(align - 1);
+    ImGui_GfxDataBlock block;
+    block.offset = dataBuffer.Allocate(size, align);
+    block.mem = dataBuffer.block;
+    block.size = size;
+    return block;
+}
+ImGui_GfxDataBlock allocTmp(u32 size, u32 align)
+{
+    size = (size + align - 1) & ~(align - 1);
+    ImGui_GfxDataBlock block;
+    block.offset = tempBuffer.Allocate(size, align);
+    block.mem = tempBuffer.block;
+    block.size = size;
+    return block;
+}
+void resetTmp()
+{
+    tempBuffer.Reset();
+}
 
 void dkError(void* userData, const char* context, DkResult result)
 {
@@ -334,8 +199,8 @@ void graphicsInitialize()
     tempBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 1024*1024);
 
     gCmdbuf = dk::CmdBufMaker{gDevice}.create();
-    gCmdBufMemOffsets[0] = dataBuffer.Allocate(1024*64, 1024*64);
-    gCmdBufMemOffsets[1] = dataBuffer.Allocate(1024*64, 1024*64);
+    gCmdbufData[0] = allocData(0x10000, 0x10000);
+    gCmdbufData[1] = allocData(0x10000, 0x10000);
 
     dk::ImageLayout fbLayout;
     dk::ImageLayoutMaker{gDevice}
@@ -349,33 +214,120 @@ void graphicsInitialize()
     std::array<DkImage const*, 2> fbArray;
     for (int i = 0; i < 2; i++)
     {
-        u32 memOffset = textureBuffer.Allocate(fbSize, fbAlign);
+        ImGui_GfxDataBlock mem = allocTexture(fbSize, fbAlign);
 
-        gFramebuffers[i].initialize(fbLayout, textureBuffer.block, memOffset);
+        gFramebuffers[i].initialize(fbLayout, mem.mem, mem.offset);
 
         fbArray[i] = &gFramebuffers[i];
     }
 
     gSwapchain = dk::SwapchainMaker{gDevice, nwindowGetDefault(), fbArray}.create();
+
+    dk::ImageLayout rotatedFbLayout;
+    dk::ImageLayoutMaker{gDevice}
+        .setFlags(DkImageFlags_UsageRender | DkImageFlags_HwCompression)
+        .setFormat(DkImageFormat_RGBA8_Unorm)
+        .setDimensions(1280, 1280)
+        .initialize(rotatedFbLayout);
+
+    ImGui_GfxDataBlock rotatedFbMem = allocTexture(rotatedFbLayout.getSize(), rotatedFbLayout.getAlignment());
+    rotatedFb.initialize(rotatedFbLayout, rotatedFbMem.mem, rotatedFbMem.offset);
+
+    fullscreenQuadMem = allocData(sizeof(fullscreenQuadData), alignof(fullscreenQuadData[0]));
+    memcpy(fullscreenQuadMem.GetCpuAddr(), fullscreenQuadData, sizeof(fullscreenQuadData));
+
+    screenVerticesMem = allocData(sizeof(ImDrawVert) * 8, alignof(ImDrawVert));
+
+    dk::ImageLayout screenTextureLayout;
+    dk::ImageLayoutMaker{gDevice}
+        .setFlags(0)
+        .setFormat(DkImageFormat_BGRX8_Unorm)
+        .setDimensions(256, 192*2)
+        .initialize(screenTextureLayout);
+
+    ImGui_GfxDataBlock screenTextureMem = allocTexture(screenTextureLayout.getSize(), screenTextureLayout.getAlignment());
+    screenTexture.initialize(screenTextureLayout, screenTextureMem.mem, screenTextureMem.offset);
 }
 
-void graphicsUpdate(int screenWidth, int screenHeight)
+void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
 {
     int slot = gQueue.acquireImage(gSwapchain);
 
     gCmdbuf.clear();
     gCmdFence[slot].wait();
-    gCmdbuf.addMemory(dataBuffer.block, gCmdBufMemOffsets[slot], 1024*64);
+    gCmdbuf.addMemory(dataBuffer.block, gCmdbufData[slot].offset, gCmdbufData[slot].size);
+    
+    if (guiState == 1)
+    {
+        ImGui_GfxDataBlock stageBuffer = allocTmp(256*192*2, 16);
+        memcpy(stageBuffer.GetCpuAddr(), GPU::Framebuffer[GPU::FrontBuffer][0], 256*192*4);
+        memcpy(((uint32_t*)stageBuffer.GetCpuAddr()) + 256*192, GPU::Framebuffer[GPU::FrontBuffer][1], 256*192*4);
+
+        dk::ImageView screenTexView {screenTexture};
+        gCmdbuf.copyBufferToImage({stageBuffer.GetGpuAddr()}, screenTexView, {0, 0, 0, 256, 192*2, 1});
+
+        gQueue.submitCommands(gCmdbuf.finishList());
+        gQueue.waitIdle();
+    }
 
     dk::ImageView colorTarget {gFramebuffers[slot]};
     gCmdbuf.bindRenderTargets(&colorTarget);
     gCmdbuf.setViewports(0, {{0, 0, 1280, 720}});
     gCmdbuf.setScissors(0, {{0, 0, 1280, 720}});
-    gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.f, 0.f, 0.f, 0.f);
+
+    if (guiState == 1)
+        gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.0f, 0.0f, 0.0f, 0.f);
+    else
+        gCmdbuf.clearColor(0, DkColorMask_RGBA, 27.f/255.f, 43.f/255.f, 67.f/255.f, 0.f);
+
+    ImGui_ImplDeko3D_SetupRenderState(gCmdbuf);
+
+    ImGui_GfxTransform transform = {0};
+    xm4_orthographic(transform.ProjMtx, -1280.f/2, 1280.f/2, 720.f/2.f, -720.f/2, -1.f, 1.f);
+    float rot[16];
+    float trans[16];
+    xm4_translatev(trans, -screenWidth/2, -screenHeight/2, 0.f);
+    xm4_rotatef(rot, -M_PI_2 * Config::GlobalRotation, 0.f, 0.f, 1.f);
+    xm4_mul(rot, trans, rot);
+    xm4_mul(transform.ProjMtx, rot, transform.ProjMtx);
+    transform.TexMtx[0] = 1.f;
+    transform.TexMtx[5] = 1.f;
+
+    ImGui_ImplDeko3D_SetTransform(gCmdbuf, &transform);
+
+    if (guiState > 0)
+    {
+        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(2, Config::Filtering ? 0 : 1));
+        gCmdbuf.bindVtxBuffer(0, screenVerticesMem.GetGpuAddr(), screenVerticesMem.size);
+        gCmdbuf.draw(DkPrimitive_Quads, 8, 1, 0, 0);
+
+        resetTmp();
+    }
 
     ImGui::Render();
-    ImGui_ImplDeko3D_RenderDrawData(ImGui::GetDrawData(), gCmdbuf);
+    ImGui_ImplDeko3D_RenderDrawData(ImGui::GetDrawData(), gCmdbuf, &transform, Config::GlobalRotation);
+/*
+    gCmdbuf.barrier(DkBarrier_Fragments, DkInvalidateFlags_Image);
 
+    colorTarget = {gFramebuffers[slot]};
+    gCmdbuf.bindRenderTargets(&colorTarget);
+    gCmdbuf.setViewports(0, {{0, 0, 1280, 720}});
+    gCmdbuf.setScissors(0, {{0, 0, 1280, 720}});
+    gCmdbuf.bindColorState(dk::ColorState().setBlendEnable(0, false));
+
+    ImGui_GfxTransform transform = {0};
+    xm4_orthographic(transform.ProjMtx, -1.f, 1.f, -1.f, 1.f, -1.f, 1.f);
+    float rot[16];
+    xm4_rotatef(rot, M_PI_2 * Config::GlobalRotation, 0.f, 0.f, 1.f);
+    xm4_mul(transform.ProjMtx, transform.ProjMtx, rot);
+    transform.TexMtx[0] = screenWidth / 1280.f;
+    transform.TexMtx[5] = screenHeight / 1280.f;
+    ImGui_ImplDeko3D_SetTransform(gCmdbuf, &transform);
+
+    gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(1, 0));
+    gCmdbuf.bindVtxBuffer(0, fullscreenQuadMem.GetGpuAddr(), fullscreenQuadMem.size);
+    gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 0, 0);
+*/
     gCmdbuf.signalFence(gCmdFence[slot]);
 
     gQueue.submitCommands(gCmdbuf.finishList());
@@ -400,43 +352,6 @@ void graphicsExit()
     gDevice.destroy();
 }
 
-ImGui_GfxDataBlock allocTexture(u32 size, u32 align)
-{
-    ImGui_GfxDataBlock block;
-    block.offset = textureBuffer.Allocate(size, align);
-    block.mem = textureBuffer.block;
-    block.size = size;
-    return block;
-}
-ImGui_GfxDataBlock allocShader(u32 size, u32 align)
-{
-    ImGui_GfxDataBlock block;
-    block.offset = codeBuffer.Allocate(size, align);
-    block.mem = codeBuffer.block;
-    block.size = size;
-    return block;
-}
-ImGui_GfxDataBlock allocData(u32 size, u32 align)
-{
-    ImGui_GfxDataBlock block;
-    block.offset = dataBuffer.Allocate(size, align);
-    block.mem = dataBuffer.block;
-    block.size = size;
-    return block;
-}
-ImGui_GfxDataBlock allocTmp(u32 size, u32 align)
-{
-    ImGui_GfxDataBlock block;
-    block.offset = tempBuffer.Allocate(size, align);
-    block.mem = tempBuffer.block;
-    block.size = size;
-    return block;
-}
-void resetTmp()
-{
-    tempBuffer.Reset();
-}
-
 void applyOverclock(bool usePCV, ClkrstSession* session, int setting)
 {
     const int clockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
@@ -446,30 +361,22 @@ void applyOverclock(bool usePCV, ClkrstSession* session, int setting)
         clkrstSetClockRate(session, clockSpeeds[setting]);
 }
 
-struct Vertex
-{
-    float position[2];
-    float uv[2];
-};
-
 float botX, botY, botWidth, botHeight;
 int AutoScreenSizing = 0;
 
-void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
+void updateScreenLayout(int screenWidth, int screenHeight)
 {
-    const Vertex verticesSingleScreen[] =
+    const ImDrawVert verticesSingleScreen[] =
     {
-        {-256.f/2, -192.f/2, 0.f, 0.f},
-        {-256.f/2, 192.f/2, 0.f, 0.5f},
-        {256.f/2, 192.f/2, 1.f, 0.5f},
-        {-256.f/2, -192.f/2, 0.f, 0.f},
-        {256.f/2, 192.f/2, 1.f, 0.5f},
-        {256.f/2, -192.f/2, 1.f, 0.f},
+        {{-256.f/2, -192.f/2}, {0.f, 0.f}, 0xFFFFFFFF},
+        {{-256.f/2, 192.f/2}, {0.f, 0.5f}, 0xFFFFFFFF},
+        {{256.f/2, 192.f/2}, {1.f, 0.5f}, 0xFFFFFFFF},
+        {{256.f/2, -192.f/2}, {1.f, 0.f}, 0xFFFFFFFF},
     };
 
-    Vertex vertices[12];
-    memcpy(&vertices[0], verticesSingleScreen, sizeof(Vertex)*6);
-    memcpy(&vertices[6], verticesSingleScreen, sizeof(Vertex)*6);
+    ImDrawVert vertices[8];
+    memcpy(&vertices[0], verticesSingleScreen, sizeof(ImDrawVert)*4);
+    memcpy(&vertices[4], verticesSingleScreen, sizeof(ImDrawVert)*4);
 
     int layout = Config::ScreenLayout == 0
         ? ((Config::ScreenRotation % 2 == 0) ? 0 : 1)
@@ -482,8 +389,8 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
         float rotmat[4];
         xm2_rotate(rotmat, M_PI_2 * rotation);
         
-        for (int i = 0; i < 12; i++)
-            xm2_transform(vertices[i].position, rotmat, vertices[i].position);
+        for (int i = 0; i < 8; i++)
+            xm2_transform(&vertices[i].pos[0], rotmat, &vertices[i].pos[0]);
     }
 
     // move screens apart
@@ -496,12 +403,12 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
             + screenGaps[Config::ScreenGap]) / 2.f;
         if (rotation >= 2)
             offset *= -1.f;
-        for (int i = 0; i < 6; i++)
-            vertices[i].position[idx] -= offset;
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 4; i++)
+            vertices[i].pos[idx] -= offset;
+        for (int i = 0; i < 4; i++)
         {
-            vertices[i + 6].position[idx] += offset;
-            vertices[i + 6].uv[1] += 0.5f;
+            vertices[i + 4].pos[idx] += offset;
+            vertices[i + 4].uv[1] += 0.5f;
         }
     }
 
@@ -512,12 +419,12 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
             float minX = 100000.f, maxX = -100000.f;
             float minY = 100000.f, maxY = -100000.f;
 
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < 8; i++)
             {
-                minX = std::min(minX, vertices[i].position[0]);
-                minY = std::min(minY, vertices[i].position[1]);
-                maxX = std::max(maxX, vertices[i].position[0]);
-                maxY = std::max(maxY, vertices[i].position[1]);
+                minX = std::min(minX, vertices[i].pos[0]);
+                minY = std::min(minY, vertices[i].pos[1]);
+                maxX = std::max(maxX, vertices[i].pos[0]);
+                maxY = std::max(maxY, vertices[i].pos[1]);
             }
 
             float hSize = maxX - minX;
@@ -529,35 +436,35 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
             if (Config::IntegerScaling)
                 scale = floor(scale);
 
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < 8; i++)
             {
-                vertices[i].position[0] *= scale;
-                vertices[i].position[1] *= scale;
+                vertices[i].pos[0] *= scale;
+                vertices[i].pos[1] *= scale;
             }
         }
         else
         {
-            int primOffset = sizing == 1 ? 0 : 6;
-            int secOffset = sizing == 1 ? 6 : 0;
+            int primOffset = sizing == 1 ? 0 : 4;
+            int secOffset = sizing == 1 ? 4 : 0;
 
             float primMinX = 100000.f, primMaxX = -100000.f;
             float primMinY = 100000.f, primMaxY = -100000.f;
             float secMinX = 100000.f, secMaxX = -100000.f;
             float secMinY = 100000.f, secMaxY = -100000.f;
 
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                primMinX = std::min(primMinX, vertices[i + primOffset].position[0]);
-                primMinY = std::min(primMinY, vertices[i + primOffset].position[1]);
-                primMaxX = std::max(primMaxX, vertices[i + primOffset].position[0]);
-                primMaxY = std::max(primMaxY, vertices[i + primOffset].position[1]);
+                primMinX = std::min(primMinX, vertices[i + primOffset].pos[0]);
+                primMinY = std::min(primMinY, vertices[i + primOffset].pos[1]);
+                primMaxX = std::max(primMaxX, vertices[i + primOffset].pos[0]);
+                primMaxY = std::max(primMaxY, vertices[i + primOffset].pos[1]);
             }
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                secMinX = std::min(secMinX, vertices[i + secOffset].position[0]);
-                secMinY = std::min(secMinY, vertices[i + secOffset].position[1]);
-                secMaxX = std::max(secMaxX, vertices[i + secOffset].position[0]);
-                secMaxY = std::max(secMaxY, vertices[i + secOffset].position[1]);
+                secMinX = std::min(secMinX, vertices[i + secOffset].pos[0]);
+                secMinY = std::min(secMinY, vertices[i + secOffset].pos[1]);
+                secMaxX = std::max(secMaxX, vertices[i + secOffset].pos[0]);
+                secMaxY = std::max(secMaxY, vertices[i + secOffset].pos[1]);
             }
 
             float primHSize = layout == 1 ? std::max(primMaxX, -primMinX) : primMaxX - primMinX;
@@ -589,15 +496,15 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
             if (Config::IntegerScaling)
                 secScale = floor(secScale);
 
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                vertices[i + primOffset].position[0] *= primScale;
-                vertices[i + primOffset].position[1] *= primScale;
+                vertices[i + primOffset].pos[0] *= primScale;
+                vertices[i + primOffset].pos[1] *= primScale;
             }
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                vertices[i + secOffset].position[0] *= secScale;
-                vertices[i + secOffset].position[1] *= secScale;
+                vertices[i + secOffset].pos[0] *= secScale;
+                vertices[i + secOffset].pos[1] *= secScale;
             }
         }
     }
@@ -607,12 +514,12 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
         float minX = 100000.f, maxX = -100000.f;
         float minY = 100000.f, maxY = -100000.f;
 
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 8; i++)
         {
-            minX = std::min(minX, vertices[i].position[0]);
-            minY = std::min(minY, vertices[i].position[1]);
-            maxX = std::max(maxX, vertices[i].position[0]);
-            maxY = std::max(maxY, vertices[i].position[1]);
+            minX = std::min(minX, vertices[i].pos[0]);
+            minY = std::min(minY, vertices[i].pos[1]);
+            maxX = std::max(maxX, vertices[i].pos[0]);
+            maxY = std::max(maxY, vertices[i].pos[1]);
         }
 
         float width = maxX - minX;
@@ -620,17 +527,17 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
 
         float botMaxX = -1000000.f, botMaxY = -1000000.f;
         float botMinX = 1000000.f, botMinY = 1000000.f;
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 8; i++)
         {
-            vertices[i].position[0] = floor(vertices[i].position[0] - minX + screenWidth / 2 - width / 2);
-            vertices[i].position[1] = floor(vertices[i].position[1] - minY + screenHeight / 2 - height / 2);
+            vertices[i].pos[0] = floor(vertices[i].pos[0] - minX + screenWidth / 2 - width / 2);
+            vertices[i].pos[1] = floor(vertices[i].pos[1] - minY + screenHeight / 2 - height / 2);
 
-            if (i >= 6)
+            if (i >= 4)
             {
-                botMinX = std::min(vertices[i].position[0], botMinX);
-                botMinY = std::min(vertices[i].position[1], botMinY);
-                botMaxX = std::max(vertices[i].position[0], botMaxX);
-                botMaxY = std::max(vertices[i].position[1], botMaxY);
+                botMinX = std::min(vertices[i].pos[0], botMinX);
+                botMinY = std::min(vertices[i].pos[1], botMinY);
+                botMaxX = std::max(vertices[i].pos[0], botMaxX);
+                botMaxY = std::max(vertices[i].pos[1], botMaxY);
             }
         }
 
@@ -639,6 +546,8 @@ void updateScreenLayout(u64 vbo, int screenWidth, int screenHeight)
         botWidth = botMaxX - botMinX;
         botHeight = botMaxY - botMinY;
     }
+
+    memcpy(screenVerticesMem.GetCpuAddr(), vertices, sizeof(ImDrawVert)*8);
 }
 
 const u32 keyMappings[] = {
@@ -1180,9 +1089,9 @@ int main(int argc, char* argv[])
     setenv("NV50_PROG_DEBUG", "1", 1);
     setenv("NV50_PROG_CHIPSET", "0x120", 1);*/
 
+#ifdef GDB_ENABLED
     socketInitializeDefault();
     int nxlinkSocket = nxlinkStdio();
-#ifdef GDB_ENABLED
     //GDBStub_Init();
     //GDBStub_Breakpoint();
 #endif
@@ -1235,6 +1144,11 @@ int main(int argc, char* argv[])
     io.FontGlobalScale = 1.5f;
 
     ImGui_ImplDeko3D_Init(gDevice, gQueue, allocShader, allocData, allocTexture, allocTmp, resetTmp);
+
+    ImGui_ImplDeko3D_GetImageDescriptor(1)->initialize(dk::ImageView{rotatedFb});
+    ImGui_ImplDeko3D_GetImageDescriptor(2)->initialize(dk::ImageView{screenTexture});
+
+    updateScreenLayout(screenWidth, screenHeight);
 
     Thread audioThread;
     setupAudio();
@@ -1505,7 +1419,7 @@ int main(int argc, char* argv[])
                 if (guess != AutoScreenSizing)
                 {
                     AutoScreenSizing = guess;
-                    //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                    updateScreenLayout(screenWidth, screenHeight);
                 }
             }
 
@@ -1643,7 +1557,7 @@ int main(int argc, char* argv[])
                         screenWidth = 720;
                         screenHeight = 1280;
                     }
-                    //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                    updateScreenLayout(screenWidth, screenHeight);
                 }
 
                 bool directBoot = Config::DirectBoot;
@@ -1772,20 +1686,12 @@ int main(int argc, char* argv[])
                         Config::ScreenLayout = newLayout;
                         Config::IntegerScaling = newIntegerScale;
 
-                        //updateScreenLayout(vtxBuffer, screenWidth, screenHeight);
+                        updateScreenLayout(screenWidth, screenHeight);
                     }
 
                     bool newFiltering = Config::Filtering;
                     ImGui::Checkbox("Filtering", &newFiltering);
-                    if (newFiltering != Config::Filtering)
-                    {
-                        /*glBindTexture(GL_TEXTURE_2D, screenTexture);
-                        GLenum glFilter = newFiltering ? GL_LINEAR : GL_NEAREST;
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, glFilter);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
-                        glBindTexture(GL_TEXTURE_2D, 0);
-                        Config::Filtering = newFiltering;*/
-                    }
+                    Config::Filtering = newFiltering;
                 }
                 ImGui::End();
 
@@ -1822,7 +1728,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        graphicsUpdate(screenWidth, screenHeight);
+        graphicsUpdate(guiState, screenWidth, screenHeight);
     }
 
     running = false;
@@ -1872,9 +1778,9 @@ int main(int argc, char* argv[])
     appletUnhook(&aptCookie);
     appletUnlockExit();
 
+#ifdef GDB_ENABLED
     close(nxlinkSocket);
     socketExit();
-#ifdef GDB_ENABLED
     //GDBStub_Shutdown();
 #endif
     romfsExit();

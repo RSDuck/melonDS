@@ -17,11 +17,6 @@ static dk::Shader g_Vsh, g_Fsh;
 
 static dk::Image g_FontTexture;
 
-struct Transform
-{
-    float ProjMtx[16];
-};
-
 void ImGui_ImplDeko3D_CreateDeviceObjects(dk::Queue queue);
 
 void ImGui_ImplDeko3D_Init(dk::Device device,
@@ -67,10 +62,12 @@ void ImGui_ImplDeko3D_LoadShader(const char* path, dk::Shader& out)
 
         rewind(f);
         void* ctrlmem = malloc(header.control_sz);
-        assert(fread(ctrlmem, header.control_sz, 1, f));
+        size_t read = fread(ctrlmem, header.control_sz, 1, f);
+        assert (read == header.control_sz);
 
         ImGui_GfxDataBlock data = g_AllocShader(header.code_sz, DK_SHADER_CODE_ALIGNMENT);
-        assert(fread(data.GetCpuAddr(), header.code_sz, 1, f));
+        read = fread(data.GetCpuAddr(), header.code_sz, 1, f);
+        assert(read == header.code_sz);
 
         dk::ShaderMaker{data.mem, data.offset}
             .setControl(ctrlmem)
@@ -106,8 +103,8 @@ void ImGui_ImplDeko3D_SetupRenderState(dk::CmdBuf cmdbuf)
             .setSrcColorBlendFactor(DkBlendFactor_SrcAlpha)
             .setDstColorBlendFactor(DkBlendFactor_InvSrcAlpha));
 
-    cmdbuf.bindImageDescriptorSet(g_ImageDescriptor.GetGpuAddr(), 1);
-    cmdbuf.bindSamplerDescriptorSet(g_SamplerDescriptor.GetGpuAddr(), 1);
+    cmdbuf.bindImageDescriptorSet(g_ImageDescriptor.GetGpuAddr(), 4);
+    cmdbuf.bindSamplerDescriptorSet(g_SamplerDescriptor.GetGpuAddr(), 4);
 
     cmdbuf.bindUniformBuffer(DkStage_Vertex, 0, g_TransformUniform.GetGpuAddr(), g_TransformUniform.size);
 
@@ -119,12 +116,17 @@ void ImGui_ImplDeko3D_SetupRenderState(dk::CmdBuf cmdbuf)
     cmdbuf.bindVtxBufferState({{sizeof(ImDrawVert), 0}});
 }
 
+void ImGui_ImplDeko3D_SetTransform(dk::CmdBuf cmdbuf, ImGui_GfxTransform* transform)
+{
+    cmdbuf.pushConstants(g_TransformUniform.GetGpuAddr(), g_TransformUniform.size, 0, sizeof(ImGui_GfxTransform), transform);
+}
+
 void ImGui_ImplDeko3D_CreateDeviceObjects(dk::Queue queue)
 {
     ImGui_ImplDeko3D_LoadShader("romfs:/shaders/imgui_vsh.dksh", g_Vsh);
     ImGui_ImplDeko3D_LoadShader("romfs:/shaders/imgui_fsh.dksh", g_Fsh);
 
-    g_TransformUniform = g_AllocData(sizeof(Transform), DK_UNIFORM_BUF_ALIGNMENT);
+    g_TransformUniform = g_AllocData(sizeof(ImGui_GfxTransform), DK_UNIFORM_BUF_ALIGNMENT);
 
     for (int i = 0; i < 2; i++)
     {
@@ -164,38 +166,40 @@ void ImGui_ImplDeko3D_CreateDeviceObjects(dk::Queue queue)
         tmpcmdbuf.clear();
         tmpcmdbuf.addMemory(tmpcmdbufmem.mem, tmpcmdbufmem.offset, tmpcmdbufmem.size);
 
-        g_ImageDescriptor = g_AllocData(sizeof(DkImageDescriptor), DK_IMAGE_DESCRIPTOR_ALIGNMENT);
-        g_SamplerDescriptor = g_AllocData(sizeof(DkSamplerDescriptor), DK_SAMPLER_DESCRIPTOR_ALIGNMENT);
+        g_ImageDescriptor = g_AllocData(sizeof(DkImageDescriptor) * 4, DK_IMAGE_DESCRIPTOR_ALIGNMENT);
+        g_SamplerDescriptor = g_AllocData(sizeof(DkSamplerDescriptor) * 4, DK_SAMPLER_DESCRIPTOR_ALIGNMENT);
 
-        ((dk::ImageDescriptor*)g_ImageDescriptor.GetCpuAddr())->initialize(imageView);
-        ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())->initialize(dk::Sampler{}.setFilter(DkFilter_Linear, DkFilter_Linear));
+        ImGui_ImplDeko3D_GetImageDescriptor(0)->initialize(imageView);
+        ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[0].initialize(dk::Sampler{}.setFilter(DkFilter_Linear, DkFilter_Linear));
+        ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[1].initialize(dk::Sampler{}.setFilter(DkFilter_Nearest, DkFilter_Nearest));
 
         tmpcmdbuf.destroy();
         g_ResetTmp();
     }
 }
 
-void ImGui_ImplDeko3D_RenderDrawData(ImDrawData* drawData, dk::CmdBuf cmdbuf)
+dk::ImageDescriptor* ImGui_ImplDeko3D_GetImageDescriptor(uint32_t i)
+{
+    return ((dk::ImageDescriptor*)g_ImageDescriptor.GetCpuAddr()) + i;
+}
+
+void rotate(float* out, float* in, int rotation)
+{
+    switch (rotation)
+    {
+    case 0: out[0] = in[0]; out[1] = in[1]; break;
+    case 1: out[0] = 1280.f - in[1]; out[1] = in[0]; break;
+    case 2: out[0] = 1280.f - in[0]; out[1] = 720.f - in[1]; break;
+    case 3: out[0] = in[1]; out[1] = 720.f - in[0]; break;
+    }
+}
+
+void ImGui_ImplDeko3D_RenderDrawData(ImDrawData* drawData, dk::CmdBuf cmdbuf, ImGui_GfxTransform* transform, int clipRotation)
 {
     int fb_width = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
     int fb_height = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
     if (fb_width <= 0 || fb_height <= 0)
         return;
-
-    ImGui_ImplDeko3D_SetupRenderState(cmdbuf);
-
-    float L = drawData->DisplayPos.x;
-    float R = drawData->DisplayPos.x + drawData->DisplaySize.x;
-    float T = drawData->DisplayPos.y;
-    float B = drawData->DisplayPos.y + drawData->DisplaySize.y;
-    Transform transform =
-    {{
-        2.0f/(R-L),   0.0f,         0.0f,   0.0f,
-        0.0f,         2.0f/(T-B),   0.0f,   0.0f,
-        0.0f,         0.0f,        -1.0f,   0.0f,
-        (R+L)/(L-R),  (T+B)/(B-T),  0.0f,   1.0f
-    }};
-    cmdbuf.pushConstants(g_TransformUniform.GetGpuAddr(), g_TransformUniform.size, 0, sizeof(Transform), &transform);
 
     g_VertexBufferFence[g_CurVertexBuffer].wait();
     ImGui_GfxDataBlock vtxBuffer = g_VertexBuffers[g_CurVertexBuffer];
@@ -243,8 +247,16 @@ void ImGui_ImplDeko3D_RenderDrawData(ImDrawData* drawData, dk::CmdBuf cmdbuf)
 
                 if (clip_rect.x < fb_width && clip_rect.y < fb_height && clip_rect.z >= 0.0f && clip_rect.w >= 0.0f)
                 {
+                    ImVec4 rotatedClipRect;
+                    rotate(&rotatedClipRect[0], &clip_rect[0], clipRotation);
+                    rotate(&rotatedClipRect[2], &clip_rect[2], clipRotation);
+
+                    uint32_t x0 = std::min(rotatedClipRect.x, rotatedClipRect.z);
+                    uint32_t y0 = std::min(rotatedClipRect.y, rotatedClipRect.w);
+                    uint32_t x1 = std::max(rotatedClipRect.x, rotatedClipRect.z);
+                    uint32_t y1 = std::max(rotatedClipRect.y, rotatedClipRect.w);
                     // Apply scissor/clipping rectangle
-                    cmdbuf.setScissors(0, {{(uint32_t)clip_rect.x, (uint32_t)clip_rect.y, (uint32_t)clip_rect.z, (uint32_t)clip_rect.w}});
+                    cmdbuf.setScissors(0, {{x0, y0, x1 - x0, y1 - y0}});
 
                     cmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(0, 0));
                     // Bind texture, Draw

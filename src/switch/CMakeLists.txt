@@ -10,6 +10,7 @@ SET(SOURCES_SWITCH
     profiler.cpp
 
     dr_wav.cpp
+    vec.cpp
 
     imgui/imgui_impl_deko3d.cpp
     imgui/imgui_draw.cpp
@@ -19,7 +20,11 @@ SET(SOURCES_SWITCH
 )
 
 add_executable(melonDS.elf ${SOURCES_SWITCH})
-target_link_libraries(melonDS.elf core deko3dd nx)
+if (${CMAKE_BUILD_TYPE} STREQUAL Release)
+    target_link_libraries(melonDS.elf core deko3d nx)
+else()
+    target_link_libraries(melonDS.elf core deko3dd nx)
+endif()
 
 add_custom_command(OUTPUT control.nacp
                    COMMAND ${NACPTOOL} --create "melonDS switch fast alpha" "Arisotura, RSDuck, Hydr8gon" "0.1" ${CMAKE_BINARY_DIR}/control.nacp)

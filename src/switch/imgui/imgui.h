@@ -176,24 +176,29 @@ typedef unsigned long long  ImU64;  // 64-bit unsigned integer (post C++11)
 #endif
 
 // 2D vector (often used to store positions, sizes, etc.)
-struct ImVec2
+union ImVec2
 {
-    float     x, y;
+    struct { float     x, y; };
+    float values[2];
     ImVec2()  { x = y = 0.0f; }
     ImVec2(float _x, float _y) { x = _x; y = _y; }
-    float  operator[] (size_t idx) const { IM_ASSERT(idx <= 1); return (&x)[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
-    float& operator[] (size_t idx)       { IM_ASSERT(idx <= 1); return (&x)[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
+    float  operator[] (size_t idx) const { IM_ASSERT(idx <= 1); return values[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
+    float& operator[] (size_t idx)       { IM_ASSERT(idx <= 1); return values[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
 #ifdef IM_VEC2_CLASS_EXTRA
     IM_VEC2_CLASS_EXTRA     // Define additional constructors and implicit cast operators in imconfig.h to convert back and forth between your math types and ImVec2.
 #endif
 };
 
 // 4D vector (often used to store floating-point colors)
-struct ImVec4
+union ImVec4
 {
-    float     x, y, z, w;
+    struct { float     x, y, z, w; };
+    float values[4];
     ImVec4()  { x = y = z = w = 0.0f; }
     ImVec4(float _x, float _y, float _z, float _w) { x = _x; y = _y; z = _z; w = _w; }
+
+    float  operator[] (size_t idx) const { IM_ASSERT(idx <= 3); return values[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
+    float& operator[] (size_t idx)       { IM_ASSERT(idx <= 3); return values[idx]; }    // We very rarely use this [] operator, the assert overhead is fine.
 #ifdef IM_VEC4_CLASS_EXTRA
     IM_VEC4_CLASS_EXTRA     // Define additional constructors and implicit cast operators in imconfig.h to convert back and forth between your math types and ImVec4.
 #endif
