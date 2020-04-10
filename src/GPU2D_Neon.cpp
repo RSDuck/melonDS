@@ -190,39 +190,39 @@ void GPU2DNeon::ApplyColorEffect()
             if (secondSrcBlend > 0)
                 bgobjlineBelow = vld4q_u8((u8*)&BGOBJLine[8 + 272 + i + j * 16]);
 
-            uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i + j * 16]), vdupq_n_u8(0x20)));
+            uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i + j * 16]), vdupq_n_u8(0x20));
 
             uint8x16_t flag1 = bgobjline.val[3];
             uint8x16_t flag2 = bgobjlineBelow.val[3];
 
-            uint8x16_t maskSpriteBlend1 = vceqzq_u8(vandq_u8(flag1, vdupq_n_u8(0x80)));
-            uint8x16_t mask3DBlend1 = vceqzq_u8(vandq_u8(flag1, vdupq_n_u8(0x40)));
+            uint8x16_t maskSpriteBlend1 = vtstq_u8(flag1, vdupq_n_u8(0x80));
+            uint8x16_t mask3DBlend1 = vtstq_u8(flag1, vdupq_n_u8(0x40));
             if (enableSpriteBlend)
             {
-                flag1 = vbslq_u8(maskSpriteBlend1, flag1, vdupq_n_u8(0x10));
+                flag1 = vbslq_u8(maskSpriteBlend1, vdupq_n_u8(0x10), flag1);
                 if (secondSrcBlend > 0)
-                    flag2 = vbslq_u8(vceqzq_u8(vandq_u8(flag2, vdupq_n_u8(0x80))), flag2, vdupq_n_u8(0x10));
+                    flag2 = vbslq_u8(vtstq_u8(flag2, vdupq_n_u8(0x80)), vdupq_n_u8(0x10), flag2);
             }
             if (enable3DBlend)
             {
-                flag1 = vbslq_u8(mask3DBlend1, flag1, vdupq_n_u8(0x01));
+                flag1 = vbslq_u8(mask3DBlend1, vdupq_n_u8(0x01), flag1);
                 if (secondSrcBlend > 0)
-                    flag2 = vbslq_u8(vceqzq_u8(vandq_u8(flag2, vdupq_n_u8(0x40))), flag2, vdupq_n_u8(0x01));
+                    flag2 = vbslq_u8(vtstq_u8(flag2, vdupq_n_u8(0x40)), vdupq_n_u8(0x01), flag2);
             }
 
-            uint8x16_t pixelsTarget1 = vceqzq_u8(vandq_u8(flag1, blendTargets1));
-            uint8x16_t pixelsTarget2 = vceqzq_u8(vandq_u8(flag2, blendTargets2));
+            uint8x16_t pixelsTarget1 = vtstq_u8(flag1, blendTargets1);
+            uint8x16_t pixelsTarget2 = vtstq_u8(flag2, blendTargets2);
 
             uint8x16_t coloreffect;
             if (secondSrcBlend == 2)
-                coloreffect = vbslq_u8(vorrq_u8(vorrq_u8(pixelsTarget1, pixelsTarget2), windowMask), vdupq_n_u8(0), cntBlendMode);
+                coloreffect = vbslq_u8(vandq_u8(vandq_u8(pixelsTarget1, pixelsTarget2), windowMask), cntBlendMode, vdupq_n_u8(0));
             else
-                coloreffect = vbslq_u8(vorrq_u8(pixelsTarget1, windowMask), vdupq_n_u8(0), cntBlendMode);
+                coloreffect = vbslq_u8(vandq_u8(pixelsTarget1, windowMask), cntBlendMode, vdupq_n_u8(0));
 
             if (enable3DBlend && secondSrcBlend > 0)
-                coloreffect = vbslq_u8(vorrq_u8(mask3DBlend1, pixelsTarget2), coloreffect, vdupq_n_u8(4));
+                coloreffect = vbslq_u8(vandq_u8(mask3DBlend1, pixelsTarget2), vdupq_n_u8(4), coloreffect);
             if (enableSpriteBlend && secondSrcBlend > 0)
-                coloreffect = vbslq_u8(vorrq_u8(maskSpriteBlend1, pixelsTarget2), coloreffect, vdupq_n_u8(5));
+                coloreffect = vbslq_u8(vandq_u8(maskSpriteBlend1, pixelsTarget2), vdupq_n_u8(5), coloreffect);
 
             uint8x16_t blendPixels = vceqq_u8(coloreffect, vdupq_n_u8(1));
             if (vmaxvq_u8(blendPixels) && secondSrcBlend == 2)
@@ -257,8 +257,8 @@ void GPU2DNeon::ApplyColorEffect()
             if (vmaxvq_u8(spriteBlend) && enableSpriteBlend && secondSrcBlend > 0)
             {
                 uint8x16_t bitmapAlpha = vandq_u8(bgobjline.val[3], vdupq_n_u8(0x1F));
-                uint8x16_t eva = vbslq_u8(mask3DBlend1, vecEVA, bitmapAlpha);
-                uint8x16_t evb = vbslq_u8(mask3DBlend1, vecEVB, vsubq_u8(vdupq_n_u8(16),bitmapAlpha));
+                uint8x16_t eva = vbslq_u8(mask3DBlend1, bitmapAlpha, vecEVA);
+                uint8x16_t evb = vbslq_u8(mask3DBlend1, vsubq_u8(vdupq_n_u8(16), bitmapAlpha), vecEVB);
 
                 bgobjline.val[0] = vbslq_u8(spriteBlend, ColorBlend4(bgobjline.val[0], bgobjlineBelow.val[0], eva, evb), bgobjline.val[0]);
                 bgobjline.val[1] = vbslq_u8(spriteBlend, ColorBlend4(bgobjline.val[1], bgobjlineBelow.val[1], eva, evb), bgobjline.val[1]);
@@ -351,19 +351,19 @@ inline void DrawPixels(u32* bgobjline, uint8x16_t moveMask,
     uint8x16_t newValA, uint8x16_t newValB, uint8x16_t newValC, uint8x16_t newValD)
 {
     uint8x16x4_t curLayer = vld4q_u8((u8*)bgobjline);
-    if (vmaxvq_u8(moveMask) == 0xFF)
+    if (vminvq_u8(moveMask) == 0)
     {
         uint8x16x4_t prevLayer = vld4q_u8((u8*)(bgobjline + 272));
 
-        prevLayer.val[0] = vbslq_u8(moveMask, prevLayer.val[0], curLayer.val[0]);
-        prevLayer.val[1] = vbslq_u8(moveMask, prevLayer.val[1], curLayer.val[1]);
-        prevLayer.val[2] = vbslq_u8(moveMask, prevLayer.val[2], curLayer.val[2]);
-        prevLayer.val[3] = vbslq_u8(moveMask, prevLayer.val[3], curLayer.val[3]);
+        prevLayer.val[0] = vbslq_u8(moveMask, curLayer.val[0], prevLayer.val[0]);
+        prevLayer.val[1] = vbslq_u8(moveMask, curLayer.val[1], prevLayer.val[1]);
+        prevLayer.val[2] = vbslq_u8(moveMask, curLayer.val[2], prevLayer.val[2]);
+        prevLayer.val[3] = vbslq_u8(moveMask, curLayer.val[3], prevLayer.val[3]);
 
-        curLayer.val[0] = vbslq_u8(moveMask, curLayer.val[0], newValA);
-        curLayer.val[1] = vbslq_u8(moveMask, curLayer.val[1], newValB);
-        curLayer.val[2] = vbslq_u8(moveMask, curLayer.val[2], newValC);
-        curLayer.val[3] = vbslq_u8(moveMask, curLayer.val[3], newValD);
+        curLayer.val[0] = vbslq_u8(moveMask, newValA, curLayer.val[0]);
+        curLayer.val[1] = vbslq_u8(moveMask, newValB, curLayer.val[1]);
+        curLayer.val[2] = vbslq_u8(moveMask, newValC, curLayer.val[2]);
+        curLayer.val[3] = vbslq_u8(moveMask, newValD, curLayer.val[3]);
 
         vst4q_u8((u8*)bgobjline, curLayer);
         vst4q_u8((u8*)(bgobjline + 272), prevLayer);
@@ -550,12 +550,12 @@ void GPU2DNeon::PalettiseRange(u32 start)
     {
         uint8x16x4_t pixels = vld4q_u8((u8*)&BGOBJLine[i + start]);
 
-        uint8x16_t paletted = vceqzq_u8(vandq_u8(pixels.val[2], bitmapBit));
+        uint8x16_t paletted = vtstq_u8(pixels.val[2], bitmapBit);
 
         uint16x8_t indices0 = vreinterpretq_u16_u8(
-            vzip1q_u8(vandq_u8(pixels.val[0], paletted), vandq_u8(pixels.val[1], paletted)));
+            vzip1q_u8(vbicq_u8(pixels.val[0], paletted), vbicq_u8(pixels.val[1], paletted)));
         uint16x8_t indices1 = vreinterpretq_u16_u8(
-            vzip2q_u8(vandq_u8(pixels.val[0], paletted), vandq_u8(pixels.val[1], paletted)));
+            vzip2q_u8(vbicq_u8(pixels.val[0], paletted), vbicq_u8(pixels.val[1], paletted)));
 
         uint16x8_t colorsLo;
         unroll8(i,
@@ -571,9 +571,9 @@ void GPU2DNeon::PalettiseRange(u32 start)
         uint8x16_t blue = vandq_u8(vshrq_n_u8(upper, 1), colorMask);
 
         uint8x16x4_t result = {
-            vbslq_u8(paletted, red, pixels.val[0]),
-            vbslq_u8(paletted, green, pixels.val[1]),
-            vbicq_u8(vbslq_u8(paletted, blue, pixels.val[2]), vdupq_n_u8(0xC0)),
+            vbslq_u8(paletted, pixels.val[0], red),
+            vbslq_u8(paletted, pixels.val[1], green),
+            vbicq_u8(vbslq_u8(paletted, pixels.val[2], blue), vdupq_n_u8(0xC0)),
             pixels.val[3]};
 
         vst4q_u8((u8*)&BGOBJLine[i + start], result);
@@ -789,12 +789,12 @@ void GPU2DNeon::InterleaveSprites(u32 prio)
         unroll2(j,
             uint8x16x4_t pixels = vld4q_u8((u8*)&OBJLine[8 + i + j * 16]);
             
-            uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i + j * 16]), vdupq_n_u8(0x10)));
-            uint8x16_t moveMask = vornq_u8(windowMask, vceqq_u8(vandq_u8(pixels.val[2], vdupq_n_u8(0x7)), vecPrio));
+            uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i + j * 16]), vdupq_n_u8(0x10));
+            uint8x16_t moveMask = vandq_u8(windowMask, vceqq_u8(vandq_u8(pixels.val[2], vdupq_n_u8(0x7)), vecPrio));
 
-            if (vminvq_u8(moveMask) == 0)
+            if (vmaxvq_u8(moveMask) == 0xFF)
             {
-                uint8x16_t bitmapMask = vceqzq_u8(vandq_u8(pixels.val[2], vdupq_n_u8(0x80)));
+                uint8x16_t bitmapMask = vtstq_u8(pixels.val[2], vdupq_n_u8(0x80));
 
                 uint8x16_t red;
                 uint8x16_t green;
@@ -802,9 +802,9 @@ void GPU2DNeon::InterleaveSprites(u32 prio)
                 RGB5ToRGB6(pixels.val[0], pixels.val[1], red, green, blue);
                 blue = vorrq_u8(blue, vandq_u8(pixels.val[2], vdupq_n_u8(0x80)));
 
-                pixels.val[0] = vbslq_u8(bitmapMask, pixels.val[0], red);
-                pixels.val[1] = vbslq_u8(bitmapMask, pixels.val[1], green);
-                pixels.val[2] = vbslq_u8(bitmapMask, pixels.val[2], blue);
+                pixels.val[0] = vbslq_u8(bitmapMask, red, pixels.val[0]);
+                pixels.val[1] = vbslq_u8(bitmapMask, green, pixels.val[1]);
+                pixels.val[2] = vbslq_u8(bitmapMask, blue, pixels.val[2]);
 
                 DrawPixels(&BGOBJLine[8 + j * 16 + i], moveMask,
                     pixels.val[0], pixels.val[1], pixels.val[2], pixels.val[3]);
@@ -847,10 +847,10 @@ void GPU2DNeon::DrawBG_3D()
         uint8x16x4_t c = vld4q_u8((u8*)&_3DLine[xoff]);
         xoff += 16;
 
-        uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[i + 8]), vdupq_n_u8(0x01)));
-        uint8x16_t moveMask = vorrq_u8(windowMask, vceqzq_u8(c.val[3]));
+        uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[i + 8]), vdupq_n_u8(0x01));
+        uint8x16_t moveMask = vbicq_u8(windowMask, vceqzq_u8(c.val[3]));
 
-        if (vminvq_u8(moveMask) == 0)
+        if (vmaxvq_u8(moveMask) == 0xFF)
         {
             DrawPixels(&BGOBJLine[8 + i], moveMask, 
                 c.val[0], 
@@ -1017,14 +1017,14 @@ void GPU2DNeon::DoCapture(u32 line, u32 width)
                             uint8x16_t gB = vandq_u8(vshrn_high_n_u16(vshrn_n_u16(inB16.val[0], 5), inB16.val[1], 5), rgb5Mask);
                             uint8x16_t bB = vandq_u8(vshrq_n_u8(vshrn_high_n_u16(vshrn_n_u16(inB16.val[0], 8), inB16.val[1], 8), 2), rgb5Mask);
                             uint8x16_t aB = vmovn_high_u16(vmovn_u16(
-                                vceqzq_u16(vandq_u16(inB16.val[0], alphaBit))),
-                                vceqzq_u16(vandq_u16(inB16.val[1], alphaBit)));
+                                vtstq_u16(inB16.val[0], alphaBit)),
+                                vtstq_u16(inB16.val[1], alphaBit));
 
-                            rB = vbslq_u8(aB, vecNull, rB);
-                            gB = vbslq_u8(aB, vecNull, gB);
-                            bB = vbslq_u8(aB, vecNull, bB);
+                            rB = vbslq_u8(aB, rB, vecNull);
+                            gB = vbslq_u8(aB, gB, vecNull);
+                            bB = vbslq_u8(aB, bB, vecNull);
 
-                            uint8x16_t transparent = vmvnq_u8(vandq_u8(vorrq_u8(aA, evaNull), vorrq_u8(aB, evbNull)));
+                            uint8x16_t transparent = vmvnq_u8(vandq_u8(vorrq_u8(aA, evaNull), vornq_u8(evbNull, aB)));
 
                             uint16x8_t rD0 = vaddq_u16(
                                 vmull_u8(vget_low_u8(rA), vget_low_u8(vecEva)),
@@ -1192,7 +1192,7 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             uint8x8_t curtileNeon = vdup_n_u8((curtile >> 8) | curtile & 0xFF00);
             extpalsUsed |= (1 << (curtile >> 12));
 
-            uint8x8_t hflip = vceqz_u8(vand_u8(curtileNeon, vdup_n_u8(1 << 2)));
+            uint8x8_t hflip = vtst_u8(curtileNeon, vdup_n_u8(1 << 2));
             uint8x8_t extpal = vshr_n_u8(curtileNeon, 4);
 
             uint8x8_t windowmaskbits = vld1_u8(windowMask);
@@ -1202,26 +1202,26 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
                     + (((curtile & 0x0800) ? (7-(yoff&0x7)) : (yoff&0x7)) << 3));
             if (pixels0)
             {
-                uint8x8_t movemask = vceqz_u8(vand_u8(windowmaskbits, vdup_n_u8(1 << bgnum)));
+                uint8x8_t movemask = vtst_u8(windowmaskbits, vdup_n_u8(1 << bgnum));
 
                 uint8x8_t pixels = vreinterpret_u8_u64(vdup_n_u64(pixels0));
 
-                pixels = vbsl_u8(hflip, pixels, vrev64_u8(pixels));
-                movemask = vorr_u8(movemask, vceqz_u8(pixels));
+                pixels = vbsl_u8(hflip, vrev64_u8(pixels), pixels);
+                movemask = vbic_u8(movemask, vceqz_u8(pixels));
 
                 uint8x8x4_t resLayer = vld4_u8((u8*)dst);
                 uint8x8x4_t resLayerBelow = vld4_u8((u8*)(dst + 272));
-                resLayerBelow.val[0] = vbsl_u8(movemask, resLayerBelow.val[0], resLayer.val[0]);
-                resLayerBelow.val[1] = vbsl_u8(movemask, resLayerBelow.val[1], resLayer.val[1]);
-                resLayerBelow.val[2] = vbsl_u8(movemask, resLayerBelow.val[2], resLayer.val[2]);
-                resLayerBelow.val[3] = vbsl_u8(movemask, resLayerBelow.val[3], resLayer.val[3]);
+                resLayerBelow.val[0] = vbsl_u8(movemask, resLayer.val[0], resLayerBelow.val[0]);
+                resLayerBelow.val[1] = vbsl_u8(movemask, resLayer.val[1], resLayerBelow.val[1]);
+                resLayerBelow.val[2] = vbsl_u8(movemask, resLayer.val[2], resLayerBelow.val[2]);
+                resLayerBelow.val[3] = vbsl_u8(movemask, resLayer.val[3], resLayerBelow.val[3]);
 
                 uint8x8_t palette = vadd_u8(vdup_n_u8(palOffset), vand_u8(extpal, vget_low_u8(extpalMask)));
 
-                resLayer.val[0] = vbsl_u8(movemask, resLayer.val[0], pixels);
-                resLayer.val[1] = vbsl_u8(movemask, resLayer.val[1], palette);
-                resLayer.val[2] = vbsl_u8(movemask, resLayer.val[2], vdup_n_u8(0));
-                resLayer.val[3] = vbsl_u8(movemask, resLayer.val[3], vget_low_u8(compositorFlag));
+                resLayer.val[0] = vbsl_u8(movemask, pixels, resLayer.val[0]);
+                resLayer.val[1] = vbsl_u8(movemask, palette, resLayer.val[1]);
+                resLayer.val[2] = vbsl_u8(movemask, vdup_n_u8(0), resLayer.val[2]);
+                resLayer.val[3] = vbsl_u8(movemask, vget_low_u8(compositorFlag), resLayer.val[3]);
 
                 vst4_u8((u8*)dst, resLayer);
                 vst4_u8((u8*)(dst + 272), resLayerBelow);
@@ -1251,7 +1251,7 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             uint8x16_t curtilesNeon = vreinterpretq_u8_u64(vdupq_n_u64(curtiles));
             curtilesNeon = vzip1q_u8(curtilesNeon, curtilesNeon);
 
-            uint8x16_t hflip = vceqzq_u8(vandq_u8(curtilesNeon, vdupq_n_u8(1 << 2)));
+            uint8x16_t hflip = vtstq_u8(curtilesNeon, vdupq_n_u8(1 << 2));
             uint8x16_t extpal = vshrq_n_u8(curtilesNeon, 4);
 
             uint8x16x2_t windowmaskbits = vld1q_u8_x2(windowMask);
@@ -1268,13 +1268,13 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
 
             if (pixels0 || pixels1)
             {
-                uint8x16_t movemask = vceqzq_u8(vandq_u8(windowmaskbits.val[0], vdupq_n_u8(1 << bgnum)));
+                uint8x16_t movemask = vtstq_u8(windowmaskbits.val[0], vdupq_n_u8(1 << bgnum));
 
                 uint64x2_t pixels64 = {pixels0, pixels1};
                 uint8x16_t pixels = vreinterpretq_u8_u64(pixels64);
 
-                pixels = vbslq_u8(vzip1q_u8(hflip, hflip), pixels, vrev64q_u8(pixels));
-                movemask = vorrq_u8(movemask, vceqzq_u8(pixels));
+                pixels = vbslq_u8(vzip1q_u8(hflip, hflip), vrev64q_u8(pixels), pixels);
+                movemask = vbicq_u8(movemask, vceqzq_u8(pixels));
 
                 uint8x16_t palette = vaddq_u8(vdupq_n_u8(palOffset), vandq_u8(vzip1q_u8(extpal, extpal), extpalMask));
                 DrawPixels(dst, movemask, pixels, palette, vdupq_n_u8(0), compositorFlag);
@@ -1282,13 +1282,13 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             dst += 16;
             if (pixels2 || pixels3)
             {
-                uint8x16_t movemask = vceqzq_u8(vandq_u8(windowmaskbits.val[1], vdupq_n_u8(1 << bgnum)));
+                uint8x16_t movemask = vtstq_u8(windowmaskbits.val[1], vdupq_n_u8(1 << bgnum));
 
                 uint64x2_t pixels64 = {pixels2, pixels3};
                 uint8x16_t pixels = vreinterpretq_u8_u64(pixels64);
 
-                pixels = vbslq_u8(vzip2q_u8(hflip, hflip), pixels, vrev64q_u8(pixels));
-                movemask = vorrq_u8(movemask, vceqzq_u8(pixels));
+                pixels = vbslq_u8(vzip2q_u8(hflip, hflip), vrev64q_u8(pixels), pixels);
+                movemask = vbicq_u8(movemask, vceqzq_u8(pixels));
 
                 uint8x16_t palette = vaddq_u8(vdupq_n_u8(palOffset), vandq_u8(vzip2q_u8(extpal, extpal), extpalMask));
                 DrawPixels(dst, movemask, pixels, palette, vdupq_n_u8(0), compositorFlag);
@@ -1307,7 +1307,7 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             xoff += 8;
             uint8x8_t curtileNeon = vdup_n_u8((curtile >> 8) | curtile & 0xFF00);
 
-            uint8x8_t hflip = vceqz_u8(vand_u8(curtileNeon, vdup_n_u8(1 << 2)));
+            uint8x8_t hflip = vtst_u8(curtileNeon, vdup_n_u8(1 << 2));
             uint8x8_t extpal = vshl_n_u8(vshr_n_u8(curtileNeon, 4), 4);
 
             uint8x8_t windowmaskbits = vld1_u8(windowMask);
@@ -1320,22 +1320,22 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
                 uint8x8_t pixels = vreinterpret_u8_u64(vdup_n_u64(pixels0));
                 pixels = vzip1_u8(vshr_n_u8(vshl_n_u8(pixels, 4), 4), vshr_n_u8(pixels, 4));
 
-                uint8x8_t movemask = vceqz_u8(vand_u8(windowmaskbits, vdup_n_u8(1 << bgnum)));
+                uint8x8_t movemask = vtst_u8(windowmaskbits, vdup_n_u8(1 << bgnum));
 
-                pixels = vbsl_u8(hflip, pixels, vrev64_u8(pixels));
-                movemask = vorr_u8(movemask, vceqz_u8(pixels));
+                pixels = vbsl_u8(hflip, vrev64_u8(pixels), pixels);
+                movemask = vbic_u8(movemask, vceqz_u8(pixels));
 
                 uint8x8x4_t resLayer = vld4_u8((u8*)dst);
                 uint8x8x4_t resLayerBelow = vld4_u8((u8*)(dst + 272));
-                resLayerBelow.val[0] = vbsl_u8(movemask, resLayerBelow.val[0], resLayer.val[0]);
-                resLayerBelow.val[1] = vbsl_u8(movemask, resLayerBelow.val[1], resLayer.val[1]);
-                resLayerBelow.val[2] = vbsl_u8(movemask, resLayerBelow.val[2], resLayer.val[2]);
-                resLayerBelow.val[3] = vbsl_u8(movemask, resLayerBelow.val[3], resLayer.val[3]);
+                resLayerBelow.val[0] = vbsl_u8(movemask, resLayer.val[0], resLayerBelow.val[0]);
+                resLayerBelow.val[1] = vbsl_u8(movemask, resLayer.val[1], resLayerBelow.val[1]);
+                resLayerBelow.val[2] = vbsl_u8(movemask, resLayer.val[2], resLayerBelow.val[2]);
+                resLayerBelow.val[3] = vbsl_u8(movemask, resLayer.val[3], resLayerBelow.val[3]);
 
-                resLayer.val[0] = vbsl_u8(movemask, resLayer.val[0], vadd_u8(pixels, extpal));
-                resLayer.val[1] = vbsl_u8(movemask, resLayer.val[1], vdup_n_u8(Num ? 2 : 0));
-                resLayer.val[2] = vbsl_u8(movemask, resLayer.val[2], vdup_n_u8(0));
-                resLayer.val[3] = vbsl_u8(movemask, resLayer.val[3], vget_low_u8(compositorFlag));
+                resLayer.val[0] = vbsl_u8(movemask, vadd_u8(pixels, extpal), resLayer.val[0]);
+                resLayer.val[1] = vbsl_u8(movemask, vdup_n_u8(Num ? 2 : 0), resLayer.val[1]);
+                resLayer.val[2] = vbsl_u8(movemask, vdup_n_u8(0), resLayer.val[2]);
+                resLayer.val[3] = vbsl_u8(movemask, vget_low_u8(compositorFlag), resLayer.val[3]);
 
                 vst4_u8((u8*)dst, resLayer);
                 vst4_u8((u8*)(dst + 272), resLayerBelow);
@@ -1360,7 +1360,7 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             uint8x16_t curtilesNeon = vreinterpretq_u8_u64(vdupq_n_u64(curtiles));
             curtilesNeon = vzip1q_u8(curtilesNeon, curtilesNeon);
 
-            uint8x16_t hflip = vceqzq_u8(vandq_u8(curtilesNeon, vdupq_n_u8(1 << 2)));
+            uint8x16_t hflip = vtstq_u8(curtilesNeon, vdupq_n_u8(1 << 2));
             uint8x16_t pal = vshlq_n_u8(vshrq_n_u8(curtilesNeon, 4), 4);
 
             uint8x16x2_t windowmaskbits = vld1q_u8_x2(windowMask);
@@ -1381,12 +1381,12 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
 
             if (pixels0 || pixels1)
             {
-                uint8x16_t movemask = vceqzq_u8(vandq_u8(windowmaskbits.val[0], vdupq_n_u8(1 << bgnum)));
+                uint8x16_t movemask = vtstq_u8(windowmaskbits.val[0], vdupq_n_u8(1 << bgnum));
 
                 uint8x16_t pixels = vzip1q_u8(pixelsLo, pixelsHi);
 
-                pixels = vbslq_u8(vzip1q_u8(hflip, hflip), pixels, vrev64q_u8(pixels));
-                movemask = vorrq_u8(movemask, vceqzq_u8(pixels));
+                pixels = vbslq_u8(vzip1q_u8(hflip, hflip), vrev64q_u8(pixels), pixels);
+                movemask = vbicq_u8(movemask, vceqzq_u8(pixels));
 
                 pixels = vaddq_u8(pixels, vzip1q_u8(pal, pal));
 
@@ -1395,12 +1395,12 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
             dst += 16;
             if (pixels2 || pixels3)
             {
-                uint8x16_t movemask = vceqzq_u8(vandq_u8(windowmaskbits.val[1], vdupq_n_u8(1 << bgnum)));
+                uint8x16_t movemask = vtstq_u8(windowmaskbits.val[1], vdupq_n_u8(1 << bgnum));
 
                 uint8x16_t pixels = vzip2q_u8(pixelsLo, pixelsHi);
 
-                pixels = vbslq_u8(vzip2q_u8(hflip, hflip), pixels, vrev64q_u8(pixels));
-                movemask = vorrq_u8(movemask, vceqzq_u8(pixels));
+                pixels = vbslq_u8(vzip2q_u8(hflip, hflip), vrev64q_u8(pixels), pixels);
+                movemask = vbicq_u8(movemask, vceqzq_u8(pixels));
 
                 pixels = vaddq_u8(pixels, vzip2q_u8(pal, pal));
 
@@ -1487,8 +1487,9 @@ void GPU2DNeon::DrawBG_Affine(u32 line, u32 bgnum)
                 vshrq_n_s32(vandq_s32(vecRotX, vecCoordmask), 11));
 
             // this is terrible
-            uint8x16_t overflow = vreinterpretq_u8_u32(
-                    vceqzq_s32(vandq_s32(vorrq_s32(vecRotX, vecRotY), vecOverflowMask)));
+            uint8x16_t overflow = vreinterpretq_u8_u32(vtstq_u32(
+                vreinterpretq_u32_s32(vorrq_s32(vecRotX, vecRotY)), 
+                vreinterpretq_u32_s32(vecOverflowMask)));
             moveMask = vreinterpretq_u8_u32(vsetq_lane_u32(
                 vreinterpretq_u32_u8(vuzp1q_u8(vuzp1q_u8(overflow, overflow), vuzp1q_u8(overflow, overflow)))[0],
                 vreinterpretq_u32_u8(moveMask), j));
@@ -1511,9 +1512,9 @@ void GPU2DNeon::DrawBG_Affine(u32 line, u32 bgnum)
         unroll4(j,
             unroll4(k, pixels = vld1q_lane_u8(tilesetptr + tileoff.val[j][k], pixels, j * 4 + k);))
 
-        uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum)));
+        uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum));
 
-        moveMask = vornq_u8(vorrq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
+        moveMask = vbicq_u8(vbicq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
 
         DrawPixels(&BGOBJLine[8 + i], moveMask, pixels, vdupq_n_u8(Num ? 2 : 0), vdupq_n_u8(0), vdupq_n_u8(1 << bgnum));
     }
@@ -1601,8 +1602,9 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                 uint8x16_t moveMask;
 
                 unroll4(j,
-                    uint8x16_t overflow = vreinterpretq_u8_u32(vandq_u32(
-                        vceqzq_s32(vandq_s32(vecRotX, vecOfxMask)), vceqzq_s32(vandq_s32(vecRotY, vecOfyMask))));
+                    uint8x16_t overflow = vreinterpretq_u8_u32(vorrq_u32(
+                        vtstq_u32(vreinterpretq_u32_s32(vecRotX), vreinterpretq_u32_s32(vecOfxMask)),
+                        vtstq_u32(vreinterpretq_u32_s32(vecRotY), vreinterpretq_u32_s32(vecOfyMask))));
                     moveMask = vreinterpretq_u8_u32(vsetq_lane_u32(
                         vreinterpretq_u32_u8(vuzp1q_u8(vuzp1q_u8(overflow, overflow), vuzp1q_u8(overflow, overflow)))[0],
                         vreinterpretq_u32_u8(moveMask), j));
@@ -1620,9 +1622,8 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                     vecRotY = vaddq_s32(vecRotY, dy);
                 )
 
-                uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum)));
-                moveMask = vornq_u8(
-                    vorrq_u8(windowMask, vceqzq_u8(vandq_u8(colors.val[1], vdupq_n_u8(0x80)))), moveMask);
+                uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum));
+                moveMask = vbicq_u8(vandq_u8(windowMask, vtstq_u8(colors.val[1], vdupq_n_u8(0x80))), moveMask);
 
                 uint8x16_t red;
                 uint8x16_t green;
@@ -1648,8 +1649,9 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                 uint8x16_t moveMask;
 
                 unroll4(j,
-                    uint8x16_t overflow = vreinterpretq_u8_u32(vandq_u32(
-                        vceqzq_s32(vandq_s32(vecRotX, vecOfxMask)), vceqzq_s32(vandq_s32(vecRotY, vecOfyMask))));
+                    uint8x16_t overflow = vreinterpretq_u8_u32(vorrq_u32(
+                        vtstq_u32(vreinterpretq_u32_s32(vecRotX), vreinterpretq_u32_s32(vecOfxMask)), 
+                        vtstq_u32(vreinterpretq_u32_s32(vecRotY), vreinterpretq_u32_s32(vecOfyMask))));
                     moveMask = vreinterpretq_u8_u32(vsetq_lane_u32(
                         vreinterpretq_u32_u8(vuzp1q_u8(vuzp1q_u8(overflow, overflow), vuzp1q_u8(overflow, overflow)))[0],
                         vreinterpretq_u32_u8(moveMask), j));
@@ -1665,8 +1667,8 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                     vecRotY = vaddq_s32(vecRotY, dy);
                 )
 
-                uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum)));
-                moveMask = vornq_u8(vorrq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
+                uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(1 << bgnum));
+                moveMask = vbicq_u8(vbicq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
 
                 DrawPixels(&BGOBJLine[8 + i], moveMask, 
                     pixels, vdupq_n_u8(Num ? 2 : 0), vdupq_n_u8(0),
@@ -1748,7 +1750,7 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                 uint16x8_t rotYLo11 = vreinterpretq_u16_s16(vshrn_high_n_s32(
                         vshrn_n_s32(vecRotY, 11), tweenRotY, 11));
 
-                uint8x16_t overflow = vreinterpretq_u8_u16(vceqzq_u16(vandq_u16(vorrq_u16(rotXLo11, rotYLo11), vecOverflowMask)));
+                uint8x16_t overflow = vreinterpretq_u8_u16(vtstq_u16(vorrq_u16(rotXLo11, rotYLo11), vecOverflowMask));
                 overflow = vuzp1q_u8(overflow, overflow);
 
                 if (j == 0 || j == 1)
@@ -1781,10 +1783,10 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
                 uint16x8_t localxoff = vandq_u16(vreinterpretq_u16_s16(vshrn_high_n_s32(vshrn_n_s32(vecRotX, 8), tweenRotX, 8)), tileMask); 
                 uint16x8_t localyoff = vandq_u16(vreinterpretq_u16_s16(vshrn_high_n_s32(vshrn_n_s32(vecRotY, 8), tweenRotY, 8)), tileMask); 
 
-                localxoff = vbslq_u16(vceqzq_u16(vandq_u16(tiles, hflipBit)), localxoff,
-                    vsubq_u16(vdupq_n_u16(7), localxoff));
-                localyoff = vbslq_u16(vceqzq_u16(vandq_u16(tiles, vflipBit)), localyoff,
-                    vsubq_u16(vdupq_n_u16(7), localyoff));
+                localxoff = vbslq_u16(vtstq_u16(tiles, hflipBit),
+                    vsubq_u16(vdupq_n_u16(7), localxoff), localxoff);
+                localyoff = vbslq_u16(vtstq_u16(tiles, vflipBit),
+                    vsubq_u16(vdupq_n_u16(7), localyoff), localyoff);
 
                 tileoff.val[j] = vaddq_u16(
                     vaddq_u16(vshlq_n_u16(vandq_u16(tiles, tilenumMask), 6), localxoff),
@@ -1802,8 +1804,8 @@ void GPU2DNeon::DrawBG_Extended(u32 line, u32 bgnum)
 
             uint8x16x2_t windowMask = vld1q_u8_x2(&WindowMask[i + 8]);
 
-            moveMask0 = vornq_u8(vorrq_u8(vceqzq_u8(vandq_u8(windowMask.val[0], vdupq_n_u8(1 << bgnum))), vceqzq_u8(pixels0)), moveMask0);
-            moveMask1 = vornq_u8(vorrq_u8(vceqzq_u8(vandq_u8(windowMask.val[1], vdupq_n_u8(1 << bgnum))), vceqzq_u8(pixels1)), moveMask1);
+            moveMask0 = vbicq_u8(vbicq_u8(vtstq_u8(windowMask.val[0], vdupq_n_u8(1 << bgnum)), vceqzq_u8(pixels0)), moveMask0);
+            moveMask1 = vbicq_u8(vbicq_u8(vtstq_u8(windowMask.val[1], vdupq_n_u8(1 << bgnum)), vceqzq_u8(pixels1)), moveMask1);
 
             DrawPixels(&BGOBJLine[8 + i], moveMask0, pixels0, vaddq_u8(vecPaletteOffset, vandq_u8(extpalIndex.val[0], extpalMask)), vdupq_n_u8(0), vdupq_n_u8(1 << bgnum));
             DrawPixels(&BGOBJLine[8 + 16 + i], moveMask1, pixels1, vaddq_u8(vecPaletteOffset, vandq_u8(extpalIndex.val[1], extpalMask)), vdupq_n_u8(0), vdupq_n_u8(1 << bgnum));
@@ -1895,8 +1897,9 @@ void GPU2DNeon::DrawBG_Large(u32 line)
         uint8x16_t moveMask;
 
         unroll4(j,
-            uint8x16_t overflow = vreinterpretq_u8_u32(vandq_u32(
-                vceqzq_s32(vandq_s32(vecRotX, vecOfxMask)), vceqzq_s32(vandq_s32(vecRotY, vecOfyMask))));
+            uint8x16_t overflow = vreinterpretq_u8_u32(vorrq_u32(
+                vtstq_u32(vreinterpretq_u32_s32(vecRotX), vreinterpretq_u32_s32(vecOfxMask)), 
+                vtstq_u32(vreinterpretq_u32_s32(vecRotY), vreinterpretq_u32_s32(vecOfyMask))));
             moveMask = vreinterpretq_u8_u32(vsetq_lane_u32(
                 vreinterpretq_u32_u8(vuzp1q_u8(vuzp1q_u8(overflow, overflow), vuzp1q_u8(overflow, overflow)))[0],
                 vreinterpretq_u32_u8(moveMask), j));
@@ -1911,8 +1914,8 @@ void GPU2DNeon::DrawBG_Large(u32 line)
             vecRotY = vaddq_s32(vecRotY, dy);
         )
 
-        uint8x16_t windowMask = vceqzq_u8(vandq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(0x4)));
-        moveMask = vornq_u8(vorrq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
+        uint8x16_t windowMask = vtstq_u8(vld1q_u8(&WindowMask[8 + i]), vdupq_n_u8(0x4));
+        moveMask = vbicq_u8(vbicq_u8(windowMask, vceqzq_u8(pixels)), moveMask);
 
         DrawPixels(&BGOBJLine[8 + i], moveMask, 
             pixels, vdupq_n_u8(Num ? 2 : 0), vdupq_n_u8(0),
@@ -2065,6 +2068,7 @@ void GPU2DNeon::DrawSprites(u32 line)
     PROFILER_END_SECTION
 }
 
+template <bool invertMoveMask>
 inline void DrawSpritePixels(u32* objlinePtr, u8* objindicesPtr, uint8x16_t moveMask, uint8x16_t primary,
     uint8x16_t secondary, uint8x16_t tertiary, uint8x16_t quaternary, uint8x16_t tertiaryTrans,
     uint8x16_t index)
@@ -2074,17 +2078,31 @@ inline void DrawSpritePixels(u32* objlinePtr, u8* objindicesPtr, uint8x16_t move
 
     uint8x16_t objlineEmpty = vceqzq_u8(objline.val[2]);
 
-    objline.val[0] = vbslq_u8(moveMask, objline.val[0], primary);
-    objline.val[1] = vbslq_u8(moveMask, objline.val[1], secondary);
-    objline.val[2] = vbslq_u8(moveMask, objline.val[2], tertiary);
-    objline.val[3] = vbslq_u8(moveMask, objline.val[3], quaternary);
+    if (invertMoveMask)
+    {
+        objline.val[0] = vbslq_u8(moveMask, objline.val[0], primary);
+        objline.val[1] = vbslq_u8(moveMask, objline.val[1], secondary);
+        objline.val[2] = vbslq_u8(moveMask, objline.val[2], tertiary);
+        objline.val[3] = vbslq_u8(moveMask, objline.val[3], quaternary);
 
-    objline.val[2] = vbslq_u8(vandq_u8(objlineEmpty, moveMask), tertiaryTrans, objline.val[2]);
-    indices = vbslq_u8(vornq_u8(objlineEmpty, moveMask), index, indices);
+        objline.val[2] = vbslq_u8(vandq_u8(objlineEmpty, moveMask), tertiaryTrans, objline.val[2]);
+        indices = vbslq_u8(vornq_u8(objlineEmpty, moveMask), index, indices);
+    }
+    else
+    {
+        objline.val[0] = vbslq_u8(moveMask, primary, objline.val[0]);
+        objline.val[1] = vbslq_u8(moveMask, secondary, objline.val[1]);
+        objline.val[2] = vbslq_u8(moveMask, tertiary, objline.val[2]);
+        objline.val[3] = vbslq_u8(moveMask, quaternary, objline.val[3]);
+
+        objline.val[2] = vbslq_u8(vbicq_u8(objlineEmpty, moveMask), tertiaryTrans, objline.val[2]);
+        indices = vbslq_u8(vorrq_u8(objlineEmpty, moveMask), index, indices);
+    }
 
     vst4q_u8((u8*)objlinePtr, objline);
     vst1q_u8(objindicesPtr, indices);
 }
+template <bool invertMoveMask>
 inline void DrawSpritePixelsHalf(u32* objlinePtr, u8* objindicesPtr, uint8x8_t moveMask, uint8x8_t primary,
     uint8x8_t secondary, uint8x8_t tertiary, uint8x8_t quaternary, uint8x8_t tertiaryTrans,
     uint8x8_t index)
@@ -2094,27 +2112,48 @@ inline void DrawSpritePixelsHalf(u32* objlinePtr, u8* objindicesPtr, uint8x8_t m
 
     uint8x8_t objlineEmpty = vceqz_u8(objline.val[3]);
 
-    objline.val[0] = vbsl_u8(moveMask, objline.val[0], primary);
-    objline.val[1] = vbsl_u8(moveMask, objline.val[1], secondary);
-    objline.val[2] = vbsl_u8(moveMask, objline.val[2], tertiary);
-    objline.val[3] = vbsl_u8(moveMask, objline.val[3], quaternary);
+    if (invertMoveMask)
+    {
+        objline.val[0] = vbsl_u8(moveMask, objline.val[0], primary);
+        objline.val[1] = vbsl_u8(moveMask, objline.val[1], secondary);
+        objline.val[2] = vbsl_u8(moveMask, objline.val[2], tertiary);
+        objline.val[3] = vbsl_u8(moveMask, objline.val[3], quaternary);
 
-    objline.val[2] = vbsl_u8(vand_u8(objlineEmpty, moveMask), tertiaryTrans, objline.val[2]);
-    indices = vbsl_u8(vorn_u8(objlineEmpty, moveMask), index, indices);
+        objline.val[2] = vbsl_u8(vand_u8(objlineEmpty, moveMask), tertiaryTrans, objline.val[2]);
+        indices = vbsl_u8(vorn_u8(objlineEmpty, moveMask), index, indices);
+    }
+    else
+    {
+        objline.val[0] = vbsl_u8(moveMask, primary, objline.val[0]);
+        objline.val[1] = vbsl_u8(moveMask, secondary, objline.val[1]);
+        objline.val[2] = vbsl_u8(moveMask, tertiary, objline.val[2]);
+        objline.val[3] = vbsl_u8(moveMask, quaternary, objline.val[3]);
+
+        objline.val[2] = vbsl_u8(vbic_u8(objlineEmpty, moveMask), objline.val[2], tertiaryTrans);
+        indices = vbsl_u8(vorr_u8(objlineEmpty, moveMask), index, indices);
+    }
 
     vst4_u8((u8*)objlinePtr, objline);
     vst1_u8(objindicesPtr, indices);
 }
+template <bool invertMoveMask>
 inline void DrawSpritePixelsWindow(u8* windowPtr, uint8x16_t moveMask)
 {
     uint8x16_t window = vld1q_u8(windowPtr);
-    window = vbslq_u8(moveMask, window, vdupq_n_u8(1));
+    if (invertMoveMask)
+        window = vbslq_u8(moveMask, window, vdupq_n_u8(1));
+    else
+        window = vbslq_u8(moveMask, vdupq_n_u8(1), window);
     vst1q_u8(windowPtr, window);
 }
+template <bool invertMoveMask>
 inline void DrawSpritePixelsWindowHalf(u8* windowPtr, uint8x8_t moveMask)
 {
     uint8x8_t window = vld1_u8(windowPtr);
-    window = vbsl_u8(moveMask, window, vdup_n_u8(1));
+    if (invertMoveMask)
+        window = vbsl_u8(moveMask, window, vdup_n_u8(1));
+    else
+        window = vbsl_u8(moveMask, vdup_n_u8(1), window);
     vst1_u8(windowPtr, window);
 }
 
@@ -2237,12 +2276,12 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
             pixelsLo = vbslq_u8(hflipMask, vrev64q_u8(pixelsLo), pixelsLo);
             pixelsHi = vbslq_u8(hflipMask, vrev64q_u8(pixelsHi), pixelsHi);
 
-            uint8x16_t moveMask = vceqzq_u8(vandq_u8(pixelsHi, vdupq_n_u8(0x80)));
+            uint8x16_t moveMask = vtstq_u8(pixelsHi, vdupq_n_u8(0x80));
 
             if (window)
-                DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                DrawSpritePixelsWindow<false>(&OBJWindow[xpos], moveMask);
             else
-                DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos], 
+                DrawSpritePixels<false>(&OBJLine[xpos], &OBJIndex[xpos], 
                     moveMask, pixelsLo, pixelsHi, vecSpriteFlags, vecCompositorFlags, vecSpriteFlagsTrans, 
                     vecIndex);
 
@@ -2256,12 +2295,12 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
             pixels.val[0] = vbsl_u8(vget_low_u8(hflipMask), vrev64_u8(pixels.val[0]), pixels.val[0]);
             pixels.val[1] = vbsl_u8(vget_low_u8(hflipMask), vrev64_u8(pixels.val[1]), pixels.val[1]);
 
-            uint8x8_t moveMask = vceqz_u8(vand_u8(pixels.val[1], vdup_n_u8(0x80)));
+            uint8x8_t moveMask = vtst_u8(pixels.val[1], vdup_n_u8(0x80));
 
             if (window)
-                DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                DrawSpritePixelsWindowHalf<false>(&OBJWindow[xpos], moveMask);
             else
-                DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos], 
+                DrawSpritePixelsHalf<false>(&OBJLine[xpos], &OBJIndex[xpos], 
                     moveMask, pixels.val[0], pixels.val[1], vget_low_u8(vecSpriteFlags), 
                     vget_low_u8(vecCompositorFlags), vget_low_u8(vecSpriteFlagsTrans), vget_low_u8(vecIndex));
             xpos += 8;
@@ -2342,9 +2381,9 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
                 uint8x16_t moveMask = vceqzq_u8(pixels);
 
                 if (window)
-                    DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindow<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos], moveMask,
+                    DrawSpritePixels<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask,
                         pixels, vecPalIndex, vecSpriteFlags, vecSpriteFlagsTrans, vecCompositorFlags, vecIndex);
 
                 xpos += 16;
@@ -2358,9 +2397,9 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
 
                 uint8x8_t moveMask = vceqz_u8(pixels);
                 if (window)
-                    DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindowHalf<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos], moveMask, 
+                    DrawSpritePixelsHalf<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, 
                         pixels, vget_low_u8(vecPalIndex), vget_low_u8(vecSpriteFlags), 
                         vget_low_u8(vecCompositorFlags), vget_low_u8(vecSpriteFlagsTrans),
                         vget_low_u8(vecIndex));
@@ -2411,9 +2450,9 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
                 uint8x16_t moveMask = vceqzq_u8(pixels);
 
                 if (window)
-                    DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindow<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos],
+                    DrawSpritePixels<true>(&OBJLine[xpos], &OBJIndex[xpos],
                         moveMask, vaddq_u8(pixels, paletteOffset), 
                         paletteIndexVec, vecSpriteFlags, vecCompositorFlags, vecSpriteFlagsTrans, vecIndex);
                 xpos += 16;
@@ -2432,9 +2471,9 @@ void GPU2DNeon::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos, s32 
 
                 uint8x8_t moveMask = vceqz_u8(pixels);
                 if (window)
-                    DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindowHalf<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos],
+                    DrawSpritePixelsHalf<true>(&OBJLine[xpos], &OBJIndex[xpos],
                         moveMask, vadd_u8(pixels, vget_low_u8(paletteOffset)), 
                         vget_low_u8(paletteIndexVec), vget_low_u8(vecSpriteFlags), 
                         vget_low_u8(vecCompositorFlags), vget_low_u8(vecSpriteFlagsTrans),
@@ -2594,12 +2633,12 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
             unroll2(j, unroll8(k,
                     pixels = vld2q_lane_u8(pixelsptr + offsets.val[j][k], pixels, j * 8 + k);))
 
-            moveMask = vorrq_u8(vceqzq_u8(vandq_u8(pixels.val[1], vdupq_n_u8(0x80))), moveMask);
+            moveMask = vbicq_u8(vtstq_u8(pixels.val[1], vdupq_n_u8(0x80)), moveMask);
 
             if (window)
-                DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                DrawSpritePixelsWindow<false>(&OBJWindow[xpos], moveMask);
             else
-                DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels.val[0], 
+                DrawSpritePixels<false>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels.val[0], 
                     pixels.val[1], vecSpriteFlags, vecCompositorFlags, vecSpriteFlagsTrans, vecIndex);
 
             xpos += 16;
@@ -2629,12 +2668,12 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
             uint8x8x2_t pixels;
             unroll8(j, pixels = vld2_lane_u8(pixelsptr + offsets[j], pixels, j);)
 
-            uint8x8_t moveMask = vorr_u8(vceqz_u8(vand_u8(pixels.val[1], vdup_n_u8(0x80))), moveMask);
+            uint8x8_t moveMask = vbic_u8(vtst_u8(pixels.val[1], vdup_n_u8(0x80)), moveMask);
 
             if (window)
-                DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                DrawSpritePixelsWindowHalf<false>(&OBJWindow[xpos], moveMask);
             else
-                DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels.val[0], 
+                DrawSpritePixelsHalf<false>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels.val[0], 
                     pixels.val[1], vget_low_u8(vecSpriteFlags), vget_low_u8(vecCompositorFlags), 
                     vget_low_u8(vecSpriteFlagsTrans), vget_low_u8(vecIndex));
 
@@ -2736,9 +2775,9 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
                 moveMask = vorrq_u8(vceqzq_u8(pixels), moveMask);
 
                 if (window)
-                    DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindow<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels, 
+                    DrawSpritePixels<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels, 
                         vecPaletteIndex, vecSpriteFlags, vecCompositorFlags, vecSpriteFlagsTrans, vecIndex);
 
                 xpos += 16;
@@ -2774,9 +2813,9 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
                 uint8x8_t moveMask = vorr_u8(vceqz_u8(pixels), vmovn_u16(outsideBounds));
 
                 if (window)
-                    DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindowHalf<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels,
+                    DrawSpritePixelsHalf<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, pixels,
                         vget_low_u8(vecPaletteIndex), vget_low_u8(vecSpriteFlags), vget_low_u8(vecCompositorFlags),
                         vget_low_u8(vecSpriteFlagsTrans), vget_low_u8(vecIndex));
 
@@ -2851,9 +2890,9 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
                 moveMask = vorrq_u8(vceqzq_u8(pixels), moveMask);
 
                 if (window)
-                    DrawSpritePixelsWindow(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindow<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixels(&OBJLine[xpos], &OBJIndex[xpos], moveMask, vaddq_u8(pixels, colorOffset), 
+                    DrawSpritePixels<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, vaddq_u8(pixels, colorOffset), 
                         vecPaletteIndex, vecSpriteFlags, vecCompositorFlags, vecSpriteFlagsTrans, vecIndex);
                 xpos += 16;
             }
@@ -2893,9 +2932,9 @@ void GPU2DNeon::DrawSprite_Rotscale(u32 num, u32 boundwidth, u32 boundheight, u3
                 uint8x8_t moveMask = vorr_u8(vceqz_u8(pixels), vmovn_u16(outsideBounds));
 
                 if (window)
-                    DrawSpritePixelsWindowHalf(&OBJWindow[xpos], moveMask);
+                    DrawSpritePixelsWindowHalf<true>(&OBJWindow[xpos], moveMask);
                 else
-                    DrawSpritePixelsHalf(&OBJLine[xpos], &OBJIndex[xpos], moveMask, vadd_u8(pixels, vget_low_u8(colorOffset)), 
+                    DrawSpritePixelsHalf<true>(&OBJLine[xpos], &OBJIndex[xpos], moveMask, vadd_u8(pixels, vget_low_u8(colorOffset)), 
                         vget_low_u8(vecPaletteIndex), vget_low_u8(vecSpriteFlags), vget_low_u8(vecCompositorFlags), 
                         vget_low_u8(vecSpriteFlagsTrans), vget_low_u8(vecIndex));
                 xpos += 8;
