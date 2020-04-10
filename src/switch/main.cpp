@@ -278,7 +278,7 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     if (guiState == 1)
         gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.0f, 0.0f, 0.0f, 0.f);
     else
-        gCmdbuf.clearColor(0, DkColorMask_RGBA, 170.f/255.f, 53.f/255.f, 97.f/255.f, 0.f);
+        gCmdbuf.clearColor(0, DkColorMask_RGBA, 117.f/255.f, 38.f/255.f, 50.f/255.f, 0.f);
 
     ImGui_ImplDeko3D_SetupRenderState(gCmdbuf);
 
