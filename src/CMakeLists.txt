@@ -4,6 +4,8 @@ set (CMAKE_CXX_STANDARD 14)
 
 
 add_library(core STATIC
+	ARCodeList.cpp
+	AREngine.cpp
 	ARM.cpp
 	ARMInterpreter.cpp
 	ARMInterpreter_ALU.cpp

@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Arisotura
+    Copyright 2016-2020 Arisotura
 
     This file is part of melonDS.
 
@@ -173,6 +173,8 @@ void GXFIFOUnstall();
 u32 GetPC(u32 cpu);
 u64 GetSysClockCycles(int num);
 void NocashPrint(u32 cpu, u32 addr);
+
+void MonitorARM9Jump(u32 addr);
 
 bool DMAsInMode(u32 cpu, u32 mode);
 bool DMAsRunning(u32 cpu);

@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Arisotura
+    Copyright 2016-2020 Arisotura
 
     This file is part of melonDS.
 
@@ -30,6 +30,7 @@
 #include "SPI.h"
 #include "RTC.h"
 #include "Wifi.h"
+#include "AREngine.h"
 #include "Platform.h"
 #include "ARMJIT.h"
 
@@ -105,6 +106,7 @@ u8 ARM7WRAM[0x10000];
 
 u16 ExMemCnt[2];
 
+// TODO: these belong in NDSCart!
 u8 ROMSeed0[2*8];
 u8 ROMSeed1[2*8];
 
@@ -149,6 +151,8 @@ u16 RCnt;
 
 bool Running;
 
+bool RunningGame;
+
 
 void DivDone(u32 param);
 void SqrtDone(u32 param);
@@ -183,6 +187,8 @@ bool Init()
     if (!RTC::Init()) return false;
     if (!Wifi::Init()) return false;
 
+    if (!AREngine::Init()) return false;
+
     return true;
 }
 
@@ -205,6 +211,8 @@ void DeInit()
     SPI::DeInit();
     RTC::DeInit();
     Wifi::DeInit();
+
+    AREngine::DeInit();
 }
 
 
@@ -319,7 +327,24 @@ void SetupDirectBoot()
 
     MapSharedWRAM(3);
 
-    for (u32 i = 0; i < bootparams[3]; i+=4)
+    u32 arm9start = 0;
+
+    // load the ARM9 secure area
+    if (bootparams[0] >= 0x4000 && bootparams[0] < 0x8000)
+    {
+        u8 securearea[0x800];
+        NDSCart::DecryptSecureArea(securearea);
+
+        for (u32 i = 0; i < 0x800; i+=4)
+        {
+            ARM9Write32(bootparams[2]+i, *(u32*)&securearea[i]);
+            arm9start += 4;
+        }
+    }
+
+    // CHECKME: firmware seems to load this in 0x200 byte chunks
+
+    for (u32 i = arm9start; i < bootparams[3]; i+=4)
     {
         u32 tmp = *(u32*)&NDSCart::CartROM[bootparams[0]+i];
         ARM9Write32(bootparams[2]+i, tmp);
@@ -397,6 +422,7 @@ void Reset()
     FILE* f;
     u32 i;
 
+    RunningGame = false;
     LastSysClockCycles = 0;
 
     f = Platform::OpenLocalFile("bios9.bin", "rb");
@@ -518,6 +544,8 @@ void Reset()
     SPI::Reset();
     RTC::Reset();
     Wifi::Reset();
+
+    AREngine::Reset();
 }
 
 void Stop()
@@ -687,21 +715,16 @@ bool DoSavestate(Savestate* file)
     file->Var16(&KeyCnt);
     file->Var16(&RCnt);
 
-
-    for (int i = 0; i < 8; i++)
-        DMAs[i]->DoSavestate(file);
-
     file->Var8(&WRAMCnt);
+
+    file->Var32((u32*)&RunningGame);
 
     if (!file->Saving)
     {
         // 'dept of redundancy dept'
         // but we do need to update the mappings
         MapSharedWRAM(WRAMCnt);
-    }
 
-    if (!file->Saving)
-    {
         InitTimings();
         SetGBASlotTimings();
 
@@ -709,6 +732,9 @@ bool DoSavestate(Savestate* file)
         WifiWaitCnt = 0xFFFF;
         SetWifiWaitCnt(tmp); // force timing table update
     }
+
+    for (int i = 0; i < 8; i++)
+        DMAs[i]->DoSavestate(file);
 
     ARM9->DoSavestate(file);
     ARM7->DoSavestate(file);
@@ -1319,6 +1345,22 @@ void NocashPrint(u32 ncpu, u32 addr)
 
     output[ptr] = '\0';
     printf("%s", output);
+}
+
+
+
+void MonitorARM9Jump(u32 addr)
+{
+    // checkme: can the entrypoint addr be THUMB?
+
+    if ((!RunningGame) && NDSCart::CartROM)
+    {
+        if (addr == *(u32*)&NDSCart::CartROM[0x24])
+        {
+            printf("Game is now booting\n");
+            RunningGame = true;
+        }
+    }
 }
 
 

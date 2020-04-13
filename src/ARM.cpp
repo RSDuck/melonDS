@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2019 Arisotura
+    Copyright 2016-2020 Arisotura
 
     This file is part of melonDS.
 
@@ -22,6 +22,7 @@
 #include "ARMInterpreter.h"
 #include "ARMJIT.h"
 #include "Config.h"
+#include "AREngine.h"
 
 #include <unordered_map>
 
@@ -246,6 +247,8 @@ void ARMv5::JumpTo(u32 addr, bool restorecpsr)
         PrefetchAbort();
         return;
     }*/
+
+    NDS::MonitorARM9Jump(addr);
 }
 
 void ARMv4::JumpTo(u32 addr, bool restorecpsr)
@@ -424,6 +427,14 @@ void ARM::TriggerIRQ()
     R_IRQ[2] = oldcpsr;
     R[14] = R[15] + (oldcpsr & 0x20 ? 2 : 0);
     JumpTo(ExceptionBase + 0x18);
+
+    // ARDS cheat support
+    // normally, those work by hijacking the ARM7 VBlank handler
+    if (Num == 1)
+    {
+        if ((NDS::IF[1] & NDS::IE[1]) & (1<<NDS::IRQ_VBlank))
+            AREngine::RunCheats();
+    }
 }
 
 void ARMv5::PrefetchAbort()
