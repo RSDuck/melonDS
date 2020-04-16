@@ -73,28 +73,26 @@ u16 Cnt;
 u8 MasterVolume;
 u16 Bias;
 
-Channel* Channels[16];
-CaptureUnit* Capture[2];
+Channel Channels[16] =
+{
+    Channel(0), Channel(1), Channel(2), Channel(3), 
+    Channel(4), Channel(5), Channel(6), Channel(7), 
+    Channel(8), Channel(9), Channel(10), Channel(11),
+    Channel(12), Channel(13), Channel(14), Channel(15)
+};
+CaptureUnit Capture[2] =
+{
+    CaptureUnit(0), CaptureUnit(1)
+};
 
 
 bool Init()
 {
-    for (int i = 0; i < 16; i++)
-        Channels[i] = new Channel(i);
-
-    Capture[0] = new CaptureUnit(0);
-    Capture[1] = new CaptureUnit(1);
-
     return true;
 }
 
 void DeInit()
 {
-    for (int i = 0; i < 16; i++)
-        delete Channels[i];
-
-    delete Capture[0];
-    delete Capture[1];
 }
 
 void Reset()
@@ -106,10 +104,10 @@ void Reset()
     Bias = 0;
 
     for (int i = 0; i < 16; i++)
-        Channels[i]->Reset();
+        Channels[i].Reset();
 
-    Capture[0]->Reset();
-    Capture[1]->Reset();
+    Capture[0].Reset();
+    Capture[1].Reset();
 
     NDS::ScheduleEvent(NDS::Event_SPU, true, 1024*kSamplesPerRun, Mix, kSamplesPerRun);
 }
@@ -128,10 +126,10 @@ void DoSavestate(Savestate* file)
     file->Var16(&Bias);
 
     for (int i = 0; i < 16; i++)
-        Channels[i]->DoSavestate(file);
+        Channels[i].DoSavestate(file);
 
-    Capture[0]->DoSavestate(file);
-    Capture[1]->DoSavestate(file);
+    Capture[0].DoSavestate(file);
+    Capture[1].DoSavestate(file);
 }
 
 
@@ -595,21 +593,21 @@ void Mix(u32 samples)
 
     if (Cnt & (1<<15))
     {
-        Channels[0]->DoRun(ch0buf, samples);
-        Channels[1]->DoRun(ch1buf, samples);
-        Channels[2]->DoRun(ch2buf, samples);
-        Channels[3]->DoRun(ch3buf, samples);
+        Channels[0].DoRun(ch0buf, samples);
+        Channels[1].DoRun(ch1buf, samples);
+        Channels[2].DoRun(ch2buf, samples);
+        Channels[3].DoRun(ch3buf, samples);
 
         // TODO: addition from capture registers
-        Channels[0]->PanOutput(ch0buf, samples, leftbuf, rightbuf);
-        Channels[2]->PanOutput(ch2buf, samples, leftbuf, rightbuf);
+        Channels[0].PanOutput(ch0buf, samples, leftbuf, rightbuf);
+        Channels[2].PanOutput(ch2buf, samples, leftbuf, rightbuf);
 
-        if (!(Cnt & (1<<12))) Channels[1]->PanOutput(ch1buf, samples, leftbuf, rightbuf);
-        if (!(Cnt & (1<<13))) Channels[3]->PanOutput(ch3buf, samples, leftbuf, rightbuf);
+        if (!(Cnt & (1<<12))) Channels[1].PanOutput(ch1buf, samples, leftbuf, rightbuf);
+        if (!(Cnt & (1<<13))) Channels[3].PanOutput(ch3buf, samples, leftbuf, rightbuf);
 
         for (int i = 4; i < 16; i++)
         {
-            Channel* chan = Channels[i];
+            Channel* chan = &Channels[i];
 
             chan->DoRun(channelbuf, samples);
             chan->PanOutput(channelbuf, samples, leftbuf, rightbuf);
@@ -618,7 +616,7 @@ void Mix(u32 samples)
         // sound capture
         // TODO: other sound capture sources, along with their bugs
 
-        if (Capture[0]->Cnt & (1<<7))
+        if (Capture[0].Cnt & (1<<7))
         {
             for (u32 s = 0; s < samples; s++)
             {
@@ -628,12 +626,12 @@ void Mix(u32 samples)
                 if      (val < -0x8000) val = -0x8000;
                 else if (val > 0x7FFF)  val = 0x7FFF;
 
-                Capture[0]->Run(val);
-                if (!(Capture[0]->Cnt & (1<<7))) break;
+                Capture[0].Run(val);
+                if (!(Capture[0].Cnt & (1<<7))) break;
             }
         }
 
-        if (Capture[1]->Cnt & (1<<7))
+        if (Capture[1].Cnt & (1<<7))
         {
             for (u32 s = 0; s < samples; s++)
             {
@@ -643,8 +641,8 @@ void Mix(u32 samples)
                 if      (val < -0x8000) val = -0x8000;
                 else if (val > 0x7FFF)  val = 0x7FFF;
 
-                Capture[1]->Run(val);
-                if (!(Capture[1]->Cnt & (1<<7))) break;
+                Capture[1].Run(val);
+                if (!(Capture[1].Cnt & (1<<7))) break;
             }
         }
 
@@ -660,22 +658,22 @@ void Mix(u32 samples)
             break;
         case 0x0100: // channel 1
             {
-                s32 pan = 128 - Channels[1]->Pan;
+                s32 pan = 128 - Channels[1].Pan;
                 for (u32 s = 0; s < samples; s++)
                     leftoutput[s] = ((s64)ch1buf[s] * pan) >> 10;
             }
             break;
         case 0x0200: // channel 3
             {
-                s32 pan = 128 - Channels[3]->Pan;
+                s32 pan = 128 - Channels[3].Pan;
                 for (u32 s = 0; s < samples; s++)
                     leftoutput[s] = ((s64)ch3buf[s] * pan) >> 10;
             }
             break;
         case 0x0300: // channel 1+3
             {
-                s32 pan1 = 128 - Channels[1]->Pan;
-                s32 pan3 = 128 - Channels[3]->Pan;
+                s32 pan1 = 128 - Channels[1].Pan;
+                s32 pan3 = 128 - Channels[3].Pan;
                 for (u32 s = 0; s < samples; s++)
                     leftoutput[s] = (((s64)ch1buf[s] * pan1) >> 10) + (((s64)ch3buf[s] * pan3) >> 10);
             }
@@ -692,22 +690,22 @@ void Mix(u32 samples)
             break;
         case 0x0400: // channel 1
             {
-                s32 pan = Channels[1]->Pan;
+                s32 pan = Channels[1].Pan;
                 for (u32 s = 0; s < samples; s++)
                     rightoutput[s] = ((s64)ch1buf[s] * pan) >> 10;
             }
             break;
         case 0x0800: // channel 3
             {
-                s32 pan = Channels[3]->Pan;
+                s32 pan = Channels[3].Pan;
                 for (u32 s = 0; s < samples; s++)
                     rightoutput[s] = ((s64)ch3buf[s] * pan) >> 10;
             }
             break;
         case 0x0C00: // channel 1+3
             {
-                s32 pan1 = Channels[1]->Pan;
-                s32 pan3 = Channels[3]->Pan;
+                s32 pan1 = Channels[1].Pan;
+                s32 pan3 = Channels[3].Pan;
                 for (u32 s = 0; s < samples; s++)
                     rightoutput[s] = (((s64)ch1buf[s] * pan1) >> 10) + (((s64)ch3buf[s] * pan3) >> 10);
             }
@@ -833,7 +831,7 @@ u8 Read8(u32 addr)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -850,8 +848,8 @@ u8 Read8(u32 addr)
         case 0x04000500: return Cnt & 0x7F;
         case 0x04000501: return Cnt >> 8;
 
-        case 0x04000508: return Capture[0]->Cnt;
-        case 0x04000509: return Capture[1]->Cnt;
+        case 0x04000508: return Capture[0].Cnt;
+        case 0x04000509: return Capture[1].Cnt;
         }
     }
 
@@ -863,7 +861,7 @@ u16 Read16(u32 addr)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -878,7 +876,7 @@ u16 Read16(u32 addr)
         case 0x04000500: return Cnt;
         case 0x04000504: return Bias;
 
-        case 0x04000508: return Capture[0]->Cnt | (Capture[1]->Cnt << 8);
+        case 0x04000508: return Capture[0].Cnt | (Capture[1].Cnt << 8);
         }
     }
 
@@ -890,7 +888,7 @@ u32 Read32(u32 addr)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -904,10 +902,10 @@ u32 Read32(u32 addr)
         case 0x04000500: return Cnt;
         case 0x04000504: return Bias;
 
-        case 0x04000508: return Capture[0]->Cnt | (Capture[1]->Cnt << 8);
+        case 0x04000508: return Capture[0].Cnt | (Capture[1].Cnt << 8);
 
-        case 0x04000510: return Capture[0]->DstAddr;
-        case 0x04000518: return Capture[1]->DstAddr;
+        case 0x04000510: return Capture[0].DstAddr;
+        case 0x04000518: return Capture[1].DstAddr;
         }
     }
 
@@ -919,7 +917,7 @@ void Write8(u32 addr, u8 val)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -943,11 +941,11 @@ void Write8(u32 addr, u8 val)
             return;
 
         case 0x04000508:
-            Capture[0]->SetCnt(val);
+            Capture[0].SetCnt(val);
             if (val & 0x03) printf("!! UNSUPPORTED SPU CAPTURE MODE %02X\n", val);
             return;
         case 0x04000509:
-            Capture[1]->SetCnt(val);
+            Capture[1].SetCnt(val);
             if (val & 0x03) printf("!! UNSUPPORTED SPU CAPTURE MODE %02X\n", val);
             return;
         }
@@ -960,7 +958,7 @@ void Write16(u32 addr, u16 val)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -968,8 +966,8 @@ void Write16(u32 addr, u16 val)
         case 0x2: chan->SetCnt((chan->Cnt & 0x0000FFFF) | (val << 16)); return;
         case 0x8:
             chan->SetTimerReload(val);
-            if      ((addr & 0xF0) == 0x10) Capture[0]->SetTimerReload(val);
-            else if ((addr & 0xF0) == 0x30) Capture[1]->SetTimerReload(val);
+            if      ((addr & 0xF0) == 0x10) Capture[0].SetTimerReload(val);
+            else if ((addr & 0xF0) == 0x30) Capture[1].SetTimerReload(val);
             return;
         case 0xA: chan->SetLoopPos(val); return;
 
@@ -992,13 +990,13 @@ void Write16(u32 addr, u16 val)
             return;
 
         case 0x04000508:
-            Capture[0]->SetCnt(val & 0xFF);
-            Capture[1]->SetCnt(val >> 8);
+            Capture[0].SetCnt(val & 0xFF);
+            Capture[1].SetCnt(val >> 8);
             if (val & 0x0303) printf("!! UNSUPPORTED SPU CAPTURE MODE %04X\n", val);
             return;
 
-        case 0x04000514: Capture[0]->SetLength(val); return;
-        case 0x0400051C: Capture[1]->SetLength(val); return;
+        case 0x04000514: Capture[0].SetLength(val); return;
+        case 0x0400051C: Capture[1].SetLength(val); return;
         }
     }
 
@@ -1009,7 +1007,7 @@ void Write32(u32 addr, u32 val)
 {
     if (addr < 0x04000500)
     {
-        Channel* chan = Channels[(addr >> 4) & 0xF];
+        Channel* chan = &Channels[(addr >> 4) & 0xF];
 
         switch (addr & 0xF)
         {
@@ -1019,8 +1017,8 @@ void Write32(u32 addr, u32 val)
             chan->SetLoopPos(val >> 16);
             val &= 0xFFFF;
             chan->SetTimerReload(val);
-            if      ((addr & 0xF0) == 0x10) Capture[0]->SetTimerReload(val);
-            else if ((addr & 0xF0) == 0x30) Capture[1]->SetTimerReload(val);
+            if      ((addr & 0xF0) == 0x10) Capture[0].SetTimerReload(val);
+            else if ((addr & 0xF0) == 0x30) Capture[1].SetTimerReload(val);
             return;
         case 0xC: chan->SetLength(val); return;
         }
@@ -1040,15 +1038,15 @@ void Write32(u32 addr, u32 val)
             return;
 
         case 0x04000508:
-            Capture[0]->SetCnt(val & 0xFF);
-            Capture[1]->SetCnt(val >> 8);
+            Capture[0].SetCnt(val & 0xFF);
+            Capture[1].SetCnt(val >> 8);
             if (val & 0x0303) printf("!! UNSUPPORTED SPU CAPTURE MODE %04X\n", val);
             return;
 
-        case 0x04000510: Capture[0]->SetDstAddr(val); return;
-        case 0x04000514: Capture[0]->SetLength(val & 0xFFFF); return;
-        case 0x04000518: Capture[1]->SetDstAddr(val); return;
-        case 0x0400051C: Capture[1]->SetLength(val & 0xFFFF); return;
+        case 0x04000510: Capture[0].SetDstAddr(val); return;
+        case 0x04000514: Capture[0].SetLength(val & 0xFFFF); return;
+        case 0x04000518: Capture[1].SetDstAddr(val); return;
+        case 0x0400051C: Capture[1].SetLength(val & 0xFFFF); return;
         }
     }
 }
