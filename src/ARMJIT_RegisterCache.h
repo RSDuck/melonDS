@@ -7,7 +7,6 @@
 #include "dolphin/BitSet.h"
 
 #include <assert.h>
-#include <algorithm>
 
 namespace ARMJIT
 {
@@ -24,6 +23,7 @@ public:
     {
         for (int i = 0; i < 16; i++)
             Mapping[i] = (Reg)-1;
+        
         PCAllocatableAsSrc = ~(pcAllocatableAsSrc
             ? 0
             : (1 << 15));
@@ -95,35 +95,16 @@ public:
         LiteralsLoaded = 0;
     }
 
-    BitSet32 GetPushRegs()
-    {
-        BitSet16 used;
-        for (int i = 0; i < InstrsCount; i++)
-            used |= BitSet16(Instrs[i].Info.SrcRegs | Instrs[i].Info.DstRegs);
-
-        BitSet32 res;
-        u32 registersMax = std::min((int)used.Count(), NativeRegsAvailable);
-        for (int i = 0; i < registersMax; i++)
-            res |= BitSet32(1 << (int)NativeRegAllocOrder[i]);
-
-        return res;
-    }
-
 	void Prepare(bool thumb, int i)
     {
         FetchedInstr instr = Instrs[i];
-        
+
+        if (LoadedRegs & (1 << 15))
+            UnloadRegister(15);
+
         BitSet16 invalidedLiterals(LiteralsLoaded & instr.Info.DstRegs);
         for (int reg : invalidedLiterals)
             UnloadLiteral(reg);
-
-        if ((LoadedRegs & (1 << 15)))
-        {
-            /*if (PCAllocatableAsSrc && instr.Info.SrcRegs & (1 << 15))
-                Compiler->MovePC();
-            else*/
-                UnloadRegister(15);
-        }
 
         u16 futureNeeded = 0;
         int ranking[16];
@@ -144,7 +125,6 @@ public:
             UnloadRegister(reg);
 
         u16 necessaryRegs = ((instr.Info.SrcRegs & PCAllocatableAsSrc) | instr.Info.DstRegs) & ~instr.Info.NotStrictlyNeeded;
-        u16 writeRegs = instr.Info.DstRegs & ~instr.Info.NotStrictlyNeeded;
         BitSet16 needToBeLoaded(necessaryRegs & ~LoadedRegs);
         if (needToBeLoaded != BitSet16(0))
         {
@@ -187,12 +167,12 @@ public:
                     if (left-- == 0)
                         break;
 
-                    writeRegs |= (1 << reg) & instr.Info.DstRegs;
                     LoadRegister(reg, !(thumb || instr.Cond() >= 0xE) || (1 << reg) & instr.Info.SrcRegs);
                 }
             }
         }
-        DirtyRegs |= writeRegs & ~(1 << 15);
+
+        DirtyRegs |= (LoadedRegs & instr.Info.DstRegs) & ~(1 << 15);
     }
 
 	static const Reg NativeRegAllocOrder[];

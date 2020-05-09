@@ -185,14 +185,14 @@ public:
     {
         // code only. always nonseq 32-bit for ARM9.
         s32 numC = (R[15] & 0x2) ? 0 : CodeCycles;
-        Cycles += numC;
+        Cycles -= numC;
     }
 
     void AddCycles_CI(s32 numI)
     {
         // code+internal
         s32 numC = (R[15] & 0x2) ? 0 : CodeCycles;
-        Cycles += numC + numI;
+        Cycles -= numC + numI;
     }
 
     void AddCycles_CDI()
@@ -203,9 +203,9 @@ public:
         s32 numD = DataCycles;
 
         //if (DataRegion != CodeRegion)
-            Cycles += std::max(numC + numD - 6, std::max(numC, numD));
+            Cycles -= std::max(numC + numD - 6, std::max(numC, numD));
         //else
-        //    Cycles += numC + numD;
+        //    Cycles -= numC + numD;
     }
 
     void AddCycles_CD()
@@ -215,9 +215,9 @@ public:
         s32 numD = DataCycles;
 
         //if (DataRegion != CodeRegion)
-            Cycles += std::max(numC + numD - 6, std::max(numC, numD));
+            Cycles -= std::max(numC + numD - 6, std::max(numC, numD));
         //else
-        //    Cycles += numC + numD;
+        //    Cycles -= numC + numD;
     }
 
     void GetCodeMemRegion(u32 addr, NDS::MemRegion* region);
@@ -308,7 +308,7 @@ public:
     void DataRead8(u32 addr, u32* val)
     {
         *val = NDS::ARM7Read8(addr);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][0];
     }
 
@@ -317,7 +317,7 @@ public:
         addr &= ~1;
 
         *val = NDS::ARM7Read16(addr);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][0];
     }
 
@@ -326,7 +326,7 @@ public:
         addr &= ~3;
 
         *val = NDS::ARM7Read32(addr);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][2];
     }
 
@@ -341,7 +341,7 @@ public:
     void DataWrite8(u32 addr, u8 val)
     {
         NDS::ARM7Write8(addr, val);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][0];
     }
 
@@ -350,7 +350,7 @@ public:
         addr &= ~1;
 
         NDS::ARM7Write16(addr, val);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][0];
     }
 
@@ -359,7 +359,7 @@ public:
         addr &= ~3;
 
         NDS::ARM7Write32(addr, val);
-        DataRegion = addr >> 24;
+        DataRegion = addr;
         DataCycles = NDS::ARM7MemTimings[addr >> 15][2];
     }
 
@@ -375,13 +375,13 @@ public:
     void AddCycles_C()
     {
         // code only. this code fetch is sequential.
-        Cycles += NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?1:3];
+        Cycles -= NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?1:3];
     }
 
     void AddCycles_CI(s32 num)
     {
         // code+internal. results in a nonseq code fetch.
-        Cycles += NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?0:2] + num;
+        Cycles -= NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?0:2] + num;
     }
 
     void AddCycles_CDI()
@@ -390,24 +390,24 @@ public:
         s32 numC = NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?0:2];
         s32 numD = DataCycles;
 
-        if (DataRegion == 0x02) // mainRAM
+        if ((DataRegion >> 24) == 0x02) // mainRAM
         {
             if (CodeRegion == 0x02)
-                Cycles += numC + numD;
+                Cycles -= numC + numD;
             else
             {
                 numC++;
-                Cycles += std::max(numC + numD - 3, std::max(numC, numD));
+                Cycles -= std::max(numC + numD - 3, std::max(numC, numD));
             }
         }
         else if (CodeRegion == 0x02)
         {
             numD++;
-            Cycles += std::max(numC + numD - 3, std::max(numC, numD));
+            Cycles -= std::max(numC + numD - 3, std::max(numC, numD));
         }
         else
         {
-            Cycles += numC + numD + 1;
+            Cycles -= numC + numD + 1;
         }
     }
 
@@ -417,20 +417,20 @@ public:
         s32 numC = NDS::ARM7MemTimings[CodeCycles][(CPSR&0x20)?0:2];
         s32 numD = DataCycles;
 
-        if (DataRegion == 0x02)
+        if ((DataRegion >> 24) == 0x02)
         {
             if (CodeRegion == 0x02)
-                Cycles += numC + numD;
+                Cycles -= numC + numD;
             else
-                Cycles += std::max(numC + numD - 3, std::max(numC, numD));
+                Cycles -= std::max(numC + numD - 3, std::max(numC, numD));
         }
         else if (CodeRegion == 0x02)
         {
-            Cycles += std::max(numC + numD - 3, std::max(numC, numD));
+            Cycles -= std::max(numC + numD - 3, std::max(numC, numD));
         }
         else
         {
-            Cycles += numC + numD;
+            Cycles -= numC + numD;
         }
     }
 };
@@ -440,6 +440,14 @@ namespace ARMInterpreter
 
 void A_UNK(ARM* cpu);
 void T_UNK(ARM* cpu);
+
+}
+
+namespace NDS
+{
+
+extern ARMv5* ARM9;
+extern ARMv4* ARM7;
 
 }
 

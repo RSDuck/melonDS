@@ -45,7 +45,7 @@ public:
     virtual void SetDisplaySettings(bool accel) = 0;
 
     void VBlank();
-    void VBlankEnd();
+    virtual void VBlankEnd();
 
     void CheckWindows(u32 line);
 
@@ -133,6 +133,8 @@ public:
 
     u16* GetBGExtPal(u32 slot, u32 pal);
     u16* GetOBJExtPal();
+
+    void VBlankEnd();
 private:
     bool Accelerated;
 

@@ -2418,20 +2418,6 @@ void ApplyNewSettings(int type)
         GPU3D::InitRenderer(Screen_UseGL);
         if (Screen_UseGL) uiGLMakeContextCurrent(NULL);
     }
-    /*else if (type == 4) // vsync
-    {
-        if (Screen_UseGL)
-        {
-            uiGLMakeContextCurrent(GLContext);
-            uiGLSetVSync(Config::ScreenVSync);
-            uiGLMakeContextCurrent(NULL);
-        }
-        else
-        {
-            // TODO eventually: VSync for non-GL screen?
-        }
-    }*/
-
     EmuRunning = prevstatus;
 }
 

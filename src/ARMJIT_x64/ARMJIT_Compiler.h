@@ -16,6 +16,7 @@ const Gen::X64Reg RCPSR = Gen::R15;
 const Gen::X64Reg RSCRATCH = Gen::EAX;
 const Gen::X64Reg RSCRATCH2 = Gen::EDX;
 const Gen::X64Reg RSCRATCH3 = Gen::ECX;
+const Gen::X64Reg RSCRATCH4 = Gen::R8;
 
 struct ComplexOperand
 {
@@ -51,7 +52,10 @@ public:
 
     void Reset();
 
-    JitBlockEntry CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
+    void LinkBlock(u32 offset, JitBlockEntry entry);
+    void UnlinkBlock(u32 offset);
+
+    JitBlockEntry CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
 
     void LoadReg(int reg, Gen::X64Reg nativeReg);
     void SaveReg(int reg, Gen::X64Reg nativeReg);
@@ -86,7 +90,7 @@ public:
     void A_Comp_CmpOp();
 
     void A_Comp_MUL_MLA();
-    void A_Comp_SMULL_SMLAL();
+    void A_Comp_Mul_Long();
 
     void A_Comp_CLZ();
     
@@ -96,6 +100,9 @@ public:
 
     void A_Comp_BranchImm();
     void A_Comp_BranchXchangeReg();
+
+    void A_Comp_MRS();
+    void A_Comp_MSR();
 
     void T_Comp_ShiftImm();
     void T_Comp_AddSub_();
@@ -133,7 +140,7 @@ public:
     };
     void Comp_MemAccess(int rd, int rn, const ComplexOperand& op2, int size, int flags);
     s32 Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc, bool decrement, bool usermode);
-    void Comp_MemLoadLiteral(int size, int rd, u32 addr);
+    bool Comp_MemLoadLiteral(int size, int rd, u32 addr);
 
     void Comp_ArithTriOp(void (Compiler::*op)(int, const Gen::OpArg&, const Gen::OpArg&), 
         Gen::OpArg rd, Gen::OpArg rn, Gen::OpArg op2, bool carryUsed, int opFlags);
@@ -145,14 +152,8 @@ public:
 
     void Comp_RetriveFlags(bool sign, bool retriveCV, bool carryUsed);
 
-    void Comp_SpecialBranchBehaviour();
+    void Comp_SpecialBranchBehaviour(bool taken);
 
-    void* Gen_MemoryRoutine9(bool store, int size);
-
-    void* Gen_MemoryRoutineSeq9(bool store, bool preinc);
-    void* Gen_MemoryRoutineSeq7(bool store, bool preinc, bool codeMainRAM);
-
-    void* Gen_ChangeCPSRRoutine();
 
     Gen::OpArg Comp_RegShiftImm(int op, int amount, Gen::OpArg rm, bool S, bool& carryUsed);
     Gen::OpArg Comp_RegShiftReg(int op, Gen::OpArg rs, Gen::OpArg rm, bool S, bool& carryUsed);
@@ -167,6 +168,9 @@ public:
 
     Gen::FixupBranch CheckCondition(u32 cond);
 
+    void PushRegs(bool saveHiRegs);
+    void PopRegs(bool saveHiRegs);
+
     Gen::OpArg MapReg(int reg)
     {
         if (reg == 15 && RegCache.Mapping[reg] == Gen::INVALID_REG)
@@ -176,17 +180,43 @@ public:
         return Gen::R(RegCache.Mapping[reg]);
     }
 
+    JitBlockEntry AddEntryOffset(u32 offset)
+    {
+        return (JitBlockEntry)(ResetStart + offset);
+    }
+
+    u32 SubEntryOffset(JitBlockEntry entry)
+    {
+        return (u8*)entry - ResetStart;
+    }
+
+    void SwitchToNearCode()
+    {
+        FarCode = GetWritableCodePtr();
+        SetCodePtr(NearCode);
+    }
+
+    void SwitchToFarCode()
+    {
+        NearCode = GetWritableCodePtr();
+        SetCodePtr(FarCode);
+    }
+
+    u8* FarCode;
+    u8* NearCode;
+    u32 FarSize;
+    u32 NearSize;
+
+    u8* NearStart;
+    u8* FarStart;
+
     u8* ResetStart;
     u32 CodeMemSize;
 
     bool Exit;
     bool IrregularCycles;
 
-    void* MemoryFuncs9[3][2];
-    void* MemoryFuncs7[3][2];
-
-    void* MemoryFuncsSeq9[2][2];
-    void* MemoryFuncsSeq7[2][2][2];
+    void* BranchStub[2];
 
     void* ReadBanked;
     void* WriteBanked;

@@ -595,13 +595,7 @@ void GPU2DBase::VBlankEnd()
     //OBJMosaicYCount = 0;
 
 #if !defined(NEONGPU_ENABLED) && defined(OGLRENDERER_ENABLED)
-    if (Accelerated)
-    {
-        if ((Num == 0) && (CaptureCnt & (1<<31)) && (((CaptureCnt >> 29) & 0x3) != 1))
-        {
-            GPU3D::GLRenderer::PrepareCaptureFrame();
-        }
-    }
+    
 #endif
 }
 
@@ -685,6 +679,21 @@ GPU2DRegular::GPU2DRegular(u32 num)
             MosaicTable[m][x] = offset;
         }
     }
+}
+
+void GPU2DRegular::VBlankEnd()
+{
+    GPU2DBase::VBlankEnd();
+
+#ifdef OGLRENDERER_ENABLED
+    if (Accelerated)
+    {
+        if ((Num == 0) && (CaptureCnt & (1<<31)) && (((CaptureCnt >> 29) & 0x3) != 1))
+        {
+            GPU3D::GLRenderer::PrepareCaptureFrame();
+        }
+    }
+#endif
 }
 
 void GPU2DRegular::Reset()

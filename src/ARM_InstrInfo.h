@@ -220,13 +220,6 @@ enum
     tk_Count
 };
 
-// kitchen sink...
-enum
-{
-    misc_NothingSpecial = 0,
-    misc_WriteMemory
-};
-
 enum
 {
     flag_N = 1 << 3,

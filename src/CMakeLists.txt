@@ -2,7 +2,6 @@ project(core)
 
 set (CMAKE_CXX_STANDARD 14)
 
-
 add_library(core STATIC
 	ARCodeList.cpp
 	AREngine.cpp
@@ -20,7 +19,6 @@ add_library(core STATIC
 	GPU.cpp
 	GPU2D.cpp
 	GPU3D.cpp
-	GPU3D_OpenGL.cpp
 	GPU3D_Soft.cpp
 	NDS.cpp
 	NDSCart.cpp
@@ -30,14 +28,15 @@ add_library(core STATIC
 	SPU.cpp
 	Wifi.cpp
 	WifiAP.cpp
+
+	xxhash/xxhash.c
 )
 
 if (ENABLE_OGLRENDERER)
 	target_sources(core PRIVATE
+		GPU3D_OpenGL.cpp
 		OpenGLSupport.cpp
 	)
-
-	add_definitions(-DOGLRENDERER_ENABLED)
 endif()
 
 if (ARCHITECTURE STREQUAL ARM64)
@@ -52,11 +51,13 @@ if (ENABLE_NEONGPU)
 endif()
 
 if (ENABLE_JIT)
+	enable_language(ASM)
+
 	target_sources(core PRIVATE
 		ARMJIT.cpp
+		ARM_InstrInfo.cpp
 
 		dolphin/CommonFuncs.cpp
-		
 	)
 
 	if (ARCHITECTURE STREQUAL x86_64)
@@ -69,7 +70,10 @@ if (ENABLE_JIT)
 			ARMJIT_x64/ARMJIT_ALU.cpp
 			ARMJIT_x64/ARMJIT_LoadStore.cpp
 			ARMJIT_x64/ARMJIT_Branch.cpp
+
+			ARMJIT_x64/ARMJIT_Linkage.s
 		)
+		set_source_files_properties(ARMJIT_x64/ARMJIT_Linkage.s PROPERTIES COMPILE_FLAGS "-x assembler-with-cpp")
 	endif()
 	if (ARCHITECTURE STREQUAL ARM64)
 		target_sources(core PRIVATE

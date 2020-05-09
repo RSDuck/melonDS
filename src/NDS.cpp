@@ -546,6 +546,10 @@ void Reset()
     Wifi::Reset();
 
     AREngine::Reset();
+
+#ifdef JIT_ENABLED
+    ARMJIT::Reset();
+#endif
 }
 
 void Stop()
@@ -879,14 +883,12 @@ u32 RunFrame()
         }
         else
         {
-            PROFILER_SECTION(armv5)
 #ifdef JIT_ENABLED
             if (EnableJIT)
                 ARM9->ExecuteJIT();
             else
 #endif
                 ARM9->Execute();
-            PROFILER_END_SECTION
         }
 
         RunTimers(0);
@@ -910,14 +912,12 @@ u32 RunFrame()
             }
             else
             {
-                PROFILER_SECTION(armv4)
 #ifdef JIT_ENABLED
                 if (EnableJIT)
                     ARM7->ExecuteJIT();
                 else
 #endif
                     ARM7->Execute();
-                PROFILER_END_SECTION
             }
 
             RunTimers(1);
@@ -1064,6 +1064,9 @@ void Halt()
 
 void MapSharedWRAM(u8 val)
 {
+    if (val == WRAMCnt)
+        return;
+
     WRAMCnt = val;
 
     switch (WRAMCnt & 0x3)
@@ -1096,6 +1099,11 @@ void MapSharedWRAM(u8 val)
         SWRAM_ARM7Mask = 0x7FFF;
         break;
     }
+
+#ifdef JIT_ENABLED
+    ARMJIT::UpdateMemoryStatus9(0x3000000, 0x3000000 + 0x1000000);
+    ARMJIT::UpdateMemoryStatus7(0x3000000, 0x3000000 + 0x1000000);
+#endif
 }
 
 
@@ -1879,12 +1887,18 @@ void ARM9Write8(u32 addr, u8 val)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return;
 
     case 0x03000000:
         if (SWRAM_ARM9)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM9IfNecessary(addr);
+#endif
             *(u8*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
         }
         return;
@@ -1929,12 +1943,18 @@ void ARM9Write16(u32 addr, u16 val)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return;
 
     case 0x03000000:
         if (SWRAM_ARM9)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM9IfNecessary(addr);
+#endif
             *(u16*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
         }
         return;
@@ -1955,7 +1975,12 @@ void ARM9Write16(u32 addr, u16 val)
         case 0x00200000: GPU::WriteVRAM_BBG<u16>(addr, val); return;
         case 0x00400000: GPU::WriteVRAM_AOBJ<u16>(addr, val); return;
         case 0x00600000: GPU::WriteVRAM_BOBJ<u16>(addr, val); return;
-        default:         GPU::WriteVRAM_LCDC<u16>(addr, val); return;
+        default:
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateLCDCIfNecessary(addr);
+#endif
+            GPU::WriteVRAM_LCDC<u16>(addr, val);
+            return;
         }
 
     case 0x07000000:
@@ -1995,12 +2020,18 @@ void ARM9Write32(u32 addr, u32 val)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return ;
 
     case 0x03000000:
         if (SWRAM_ARM9)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM9IfNecessary(addr);
+#endif
             *(u32*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
         }
         return;
@@ -2021,7 +2052,12 @@ void ARM9Write32(u32 addr, u32 val)
         case 0x00200000: GPU::WriteVRAM_BBG<u32>(addr, val); return;
         case 0x00400000: GPU::WriteVRAM_AOBJ<u32>(addr, val); return;
         case 0x00600000: GPU::WriteVRAM_BOBJ<u32>(addr, val); return;
-        default:         GPU::WriteVRAM_LCDC<u32>(addr, val); return;
+        default:
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateLCDCIfNecessary(addr);
+#endif
+            GPU::WriteVRAM_LCDC<u32>(addr, val);
+            return;
         }
 
     case 0x07000000:
@@ -2285,30 +2321,38 @@ u32 ARM7Read32(u32 addr)
 
 void ARM7Write8(u32 addr, u8 val)
 {
-#ifdef JIT_ENABLED
-    ARMJIT::InvalidateByAddr7(addr);
-#endif
-
     switch (addr & 0xFF800000)
     {
     case 0x02000000:
     case 0x02800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return;
 
     case 0x03000000:
         if (SWRAM_ARM7)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM7IfNecessary(addr);
+#endif
             *(u8*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
             return;
         }
         else
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
             *(u8*)&ARM7WRAM[addr & 0xFFFF] = val;
             return;
         }
 
     case 0x03800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
         *(u8*)&ARM7WRAM[addr & 0xFFFF] = val;
         return;
 
@@ -2318,6 +2362,9 @@ void ARM7Write8(u32 addr, u8 val)
 
     case 0x06000000:
     case 0x06800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WVRAMIfNecessary(addr);
+#endif
         GPU::WriteVRAM_ARM7<u8>(addr, val);
         return;
 
@@ -2348,30 +2395,38 @@ void ARM7Write8(u32 addr, u8 val)
 
 void ARM7Write16(u32 addr, u16 val)
 {
-#ifdef JIT_ENABLED
-    ARMJIT::InvalidateByAddr7(addr);
-#endif
-
     switch (addr & 0xFF800000)
     {
     case 0x02000000:
     case 0x02800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return;
 
     case 0x03000000:
         if (SWRAM_ARM7)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM7IfNecessary(addr);
+#endif
             *(u16*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
             return;
         }
         else
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
             *(u16*)&ARM7WRAM[addr & 0xFFFF] = val;
             return;
         }
 
     case 0x03800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
         *(u16*)&ARM7WRAM[addr & 0xFFFF] = val;
         return;
 
@@ -2389,6 +2444,9 @@ void ARM7Write16(u32 addr, u16 val)
 
     case 0x06000000:
     case 0x06800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WVRAMIfNecessary(addr);
+#endif
         GPU::WriteVRAM_ARM7<u16>(addr, val);
         return;
 
@@ -2421,30 +2479,38 @@ void ARM7Write16(u32 addr, u16 val)
 
 void ARM7Write32(u32 addr, u32 val)
 {
-#ifdef JIT_ENABLED
-    ARMJIT::InvalidateByAddr7(addr);
-#endif
-
     switch (addr & 0xFF800000)
     {
     case 0x02000000:
     case 0x02800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateMainRAMIfNecessary(addr);
+#endif
         *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
         return;
 
     case 0x03000000:
         if (SWRAM_ARM7)
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateSWRAM7IfNecessary(addr);
+#endif
             *(u32*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
             return;
         }
         else
         {
+#ifdef JIT_ENABLED
+            ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
             *(u32*)&ARM7WRAM[addr & 0xFFFF] = val;
             return;
         }
 
     case 0x03800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
+#endif
         *(u32*)&ARM7WRAM[addr & 0xFFFF] = val;
         return;
 
@@ -2463,6 +2529,9 @@ void ARM7Write32(u32 addr, u32 val)
 
     case 0x06000000:
     case 0x06800000:
+#ifdef JIT_ENABLED
+        ARMJIT::InvalidateARM7WVRAMIfNecessary(addr);
+#endif
         GPU::WriteVRAM_ARM7<u32>(addr, val);
         return;
 

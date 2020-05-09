@@ -31,8 +31,6 @@ function(detect_architecture symbol arch)
     endif()
 endfunction()
 
-option(ENABLE_OGLRENDERER "Enable OpenGL renderer" ON)
-
 detect_architecture("__x86_64__" x86_64)
 detect_architecture("__i386__" x86)
 detect_architecture("__arm__" ARM)
@@ -44,6 +42,12 @@ endif()
 
 if (ENABLE_JIT)
 	add_definitions(-DJIT_ENABLED)
+endif()
+
+option(ENABLE_OGLRENDERER "Enable OpenGL renderer" ON)
+
+if (ENABLE_OGLRENDERER)
+    add_definitions(-DOGLRENDERER_ENABLED)
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL Release)
