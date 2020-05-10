@@ -121,10 +121,9 @@ extern u8 ARM9BIOS[0x1000];
 extern u8 ARM7BIOS[0x4000];
 
 extern u8 SharedWRAM[0x8000];
-extern u8* SWRAM_ARM9;
-extern u8* SWRAM_ARM7;
-extern u32 SWRAM_ARM9Mask;
-extern u32 SWRAM_ARM7Mask;
+
+extern MemRegion SWRAM_ARM9;
+extern MemRegion SWRAM_ARM7;
 
 extern u8 ARM7WRAM[0x10000];
 

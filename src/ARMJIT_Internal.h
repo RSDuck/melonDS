@@ -244,8 +244,8 @@ enum
 int ClassifyAddress9(u32 addr);
 int ClassifyAddress7(u32 addr);
 
-template <typename T> T SlowRead9(ARMv5* cpu, u32 addr);
-template <typename T> void SlowWrite9(ARMv5* cpu, u32 addr, T val);
+template <typename T> T SlowRead9(u32 addr, ARMv5* cpu);
+template <typename T> void SlowWrite9(u32 addr, ARMv5* cpu, T val);
 template <typename T> T SlowRead7(u32 addr);
 template <typename T> void SlowWrite7(u32 addr, T val);
 

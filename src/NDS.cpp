@@ -97,10 +97,10 @@ u8 MainRAM[MAIN_RAM_SIZE];
 
 u8 SharedWRAM[0x8000];
 u8 WRAMCnt;
-u8* SWRAM_ARM9;
-u8* SWRAM_ARM7;
-u32 SWRAM_ARM9Mask;
-u32 SWRAM_ARM7Mask;
+
+// putting them together so they're always next to each other
+MemRegion SWRAM_ARM9;
+MemRegion SWRAM_ARM7;
 
 u8 ARM7WRAM[0x10000];
 
@@ -1072,31 +1072,31 @@ void MapSharedWRAM(u8 val)
     switch (WRAMCnt & 0x3)
     {
     case 0:
-        SWRAM_ARM9 = &SharedWRAM[0];
-        SWRAM_ARM9Mask = 0x7FFF;
-        SWRAM_ARM7 = NULL;
-        SWRAM_ARM7Mask = 0;
+        SWRAM_ARM9.Mem = &SharedWRAM[0];
+        SWRAM_ARM9.Mask = 0x7FFF;
+        SWRAM_ARM7.Mem = NULL;
+        SWRAM_ARM7.Mask = 0;
         break;
 
     case 1:
-        SWRAM_ARM9 = &SharedWRAM[0x4000];
-        SWRAM_ARM9Mask = 0x3FFF;
-        SWRAM_ARM7 = &SharedWRAM[0];
-        SWRAM_ARM7Mask = 0x3FFF;
+        SWRAM_ARM9.Mem = &SharedWRAM[0x4000];
+        SWRAM_ARM9.Mask = 0x3FFF;
+        SWRAM_ARM7.Mem = &SharedWRAM[0];
+        SWRAM_ARM7.Mask = 0x3FFF;
         break;
 
     case 2:
-        SWRAM_ARM9 = &SharedWRAM[0];
-        SWRAM_ARM9Mask = 0x3FFF;
-        SWRAM_ARM7 = &SharedWRAM[0x4000];
-        SWRAM_ARM7Mask = 0x3FFF;
+        SWRAM_ARM9.Mem = &SharedWRAM[0];
+        SWRAM_ARM9.Mask = 0x3FFF;
+        SWRAM_ARM7.Mem = &SharedWRAM[0x4000];
+        SWRAM_ARM7.Mask = 0x3FFF;
         break;
 
     case 3:
-        SWRAM_ARM9 = NULL;
-        SWRAM_ARM9Mask = 0;
-        SWRAM_ARM7 = &SharedWRAM[0];
-        SWRAM_ARM7Mask = 0x7FFF;
+        SWRAM_ARM9.Mem = NULL;
+        SWRAM_ARM9.Mask = 0;
+        SWRAM_ARM7.Mem = &SharedWRAM[0];
+        SWRAM_ARM7.Mask = 0x7FFF;
         break;
     }
 
@@ -1700,9 +1700,9 @@ u8 ARM9Read8(u32 addr)
         return *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
-            return *(u8*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask];
+            return *(u8*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask];
         }
         else
         {
@@ -1765,9 +1765,9 @@ u16 ARM9Read16(u32 addr)
         return *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
-            return *(u16*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask];
+            return *(u16*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask];
         }
         else
         {
@@ -1830,9 +1830,9 @@ u32 ARM9Read32(u32 addr)
         return *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
-            return *(u32*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask];
+            return *(u32*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask];
         }
         else
         {
@@ -1894,12 +1894,12 @@ void ARM9Write8(u32 addr, u8 val)
         return;
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM9IfNecessary(addr);
 #endif
-            *(u8*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
+            *(u8*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask] = val;
         }
         return;
 
@@ -1950,12 +1950,12 @@ void ARM9Write16(u32 addr, u16 val)
         return;
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM9IfNecessary(addr);
 #endif
-            *(u16*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
+            *(u16*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask] = val;
         }
         return;
 
@@ -2027,12 +2027,12 @@ void ARM9Write32(u32 addr, u32 val)
         return ;
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM9IfNecessary(addr);
 #endif
-            *(u32*)&SWRAM_ARM9[addr & SWRAM_ARM9Mask] = val;
+            *(u32*)&SWRAM_ARM9.Mem[addr & SWRAM_ARM9.Mask] = val;
         }
         return;
 
@@ -2103,10 +2103,10 @@ bool ARM9GetMemRegion(u32 addr, bool write, MemRegion* region)
         return true;
 
     case 0x03000000:
-        if (SWRAM_ARM9)
+        if (SWRAM_ARM9.Mem)
         {
-            region->Mem = SWRAM_ARM9;
-            region->Mask = SWRAM_ARM9Mask;
+            region->Mem = SWRAM_ARM9.Mem;
+            region->Mask = SWRAM_ARM9.Mask;
             return true;
         }
         break;
@@ -2144,9 +2144,9 @@ u8 ARM7Read8(u32 addr)
         return *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
-            return *(u8*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask];
+            return *(u8*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask];
         }
         else
         {
@@ -2204,9 +2204,9 @@ u16 ARM7Read16(u32 addr)
         return *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
-            return *(u16*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask];
+            return *(u16*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask];
         }
         else
         {
@@ -2271,9 +2271,9 @@ u32 ARM7Read32(u32 addr)
         return *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
-            return *(u32*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask];
+            return *(u32*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask];
         }
         else
         {
@@ -2332,12 +2332,12 @@ void ARM7Write8(u32 addr, u8 val)
         return;
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM7IfNecessary(addr);
 #endif
-            *(u8*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
+            *(u8*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask] = val;
             return;
         }
         else
@@ -2406,12 +2406,12 @@ void ARM7Write16(u32 addr, u16 val)
         return;
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM7IfNecessary(addr);
 #endif
-            *(u16*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
+            *(u16*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask] = val;
             return;
         }
         else
@@ -2490,12 +2490,12 @@ void ARM7Write32(u32 addr, u32 val)
         return;
 
     case 0x03000000:
-        if (SWRAM_ARM7)
+        if (SWRAM_ARM7.Mem)
         {
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateSWRAM7IfNecessary(addr);
 #endif
-            *(u32*)&SWRAM_ARM7[addr & SWRAM_ARM7Mask] = val;
+            *(u32*)&SWRAM_ARM7.Mem[addr & SWRAM_ARM7.Mask] = val;
             return;
         }
         else
@@ -2579,7 +2579,7 @@ bool ARM7GetMemRegion(u32 addr, bool write, MemRegion* region)
         // then access all the WRAM as one contiguous block starting at 0x037F8000
         // this case needs a bit of a hack to cover
         // it's not really worth bothering anyway
-        if (!SWRAM_ARM7)
+        if (!SWRAM_ARM7.Mem)
         {
             region->Mem = ARM7WRAM;
             region->Mask = 0xFFFF;

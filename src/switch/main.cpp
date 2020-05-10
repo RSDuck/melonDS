@@ -822,10 +822,16 @@ void setupAudio()
 
     Result code;
     if (!R_SUCCEEDED(code = audrenInitialize(&arConfig)))
+    {
         printf("audren init failed! %d\n", code);
+        abort();
+    }
 
     if (!R_SUCCEEDED(code = audrvCreate(&audDrv, &arConfig, 2)))
+    {
         printf("audrv create failed! %d\n", code);
+        abort();
+    }
 
     const int poolSize = (AudioSampleSize * 2 + (AUDREN_MEMPOOL_ALIGNMENT-1)) & ~(AUDREN_MEMPOOL_ALIGNMENT-1);
     audMemPool = memalign(AUDREN_MEMPOOL_ALIGNMENT, poolSize);
@@ -1591,8 +1597,23 @@ int main(int argc, char* argv[])
                     Config::SwitchOverclock = newOverclock;
                 }
                 ImGui::SliderInt("Block size", &Config::JIT_MaxBlockSize, 1, 32);
-                ImGui::Checkbox("Branch optimisations", &Config::JIT_BrancheOptimisations);
-                ImGui::Checkbox("Literal optimisations", &Config::JIT_LiteralOptimisations);
+
+                bool enableBranchInlining = Config::JIT_BrancheOptimisations > 0;
+                bool enableBranchLinking = Config::JIT_BrancheOptimisations == 2;
+                ImGui::Checkbox("Branch optimisations", &enableBranchInlining);
+                if (enableBranchInlining)
+                    ImGui::Checkbox("Branch linking", &enableBranchLinking);
+
+                if (enableBranchLinking)
+                    Config::JIT_BrancheOptimisations = 2;
+                else if (enableBranchInlining)
+                    Config::JIT_BrancheOptimisations = 1;
+                else
+                    Config::JIT_BrancheOptimisations = 0;
+
+                bool literalOptimisations = Config::JIT_LiteralOptimisations;
+                ImGui::Checkbox("Literal optimisations", &literalOptimisations);
+                Config::JIT_LiteralOptimisations = literalOptimisations;
             }
             ImGui::End();
 

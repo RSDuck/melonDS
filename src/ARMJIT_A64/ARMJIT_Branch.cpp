@@ -143,7 +143,7 @@ void Compiler::Comp_JumpTo(u32 addr, bool forceNonConstantCycles)
     if ((Thumb || CurInstr.Cond() >= 0xE) && !forceNonConstantCycles)
         ConstantCycles += cycles;
     else
-        ADD(RCycles, RCycles, cycles);
+        SUB(RCycles, RCycles, cycles);
 }
 
 
@@ -185,7 +185,7 @@ void* Compiler::Gen_JumpTo9(int kind)
         STR(INDEX_UNSIGNED, W3, RCPU, offsetof(ARM, R[15]));
 
         ADD(W1, W1, W2);
-        ADD(RCycles, RCycles, W1);
+        SUB(RCycles, RCycles, W1);
 
         RET();
     }
@@ -205,11 +205,11 @@ void* Compiler::Gen_JumpTo9(int kind)
 
         FixupBranch halfwordLoc = TBZ(W0, 1);
         ADD(W1, W1, W2);
-        ADD(RCycles, RCycles, W1);
+        SUB(RCycles, RCycles, W1);
         RET();
 
         SetJumpTarget(halfwordLoc);
-        ADD(RCycles, RCycles, W2);
+        SUB(RCycles, RCycles, W2);
         RET();
     }
 
@@ -237,7 +237,7 @@ void* Compiler::Gen_JumpTo7(int kind)
         UBFX(W2, W3, 0, 8);
         UBFX(W3, W3, 8, 8);
         ADD(W2, W3, W2);
-        ADD(RCycles, RCycles, W2);
+        SUB(RCycles, RCycles, W2);
 
         ANDI2R(W0, W0, ~3);
 
@@ -261,7 +261,7 @@ void* Compiler::Gen_JumpTo7(int kind)
         UBFX(W2, W3, 16, 8);
         UBFX(W3, W3, 24, 8);
         ADD(W2, W3, W2);
-        ADD(RCycles, RCycles, W2);
+        SUB(RCycles, RCycles, W2);
 
         ANDI2R(W0, W0, ~1);
 
@@ -287,14 +287,21 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
     }
     else
     {
-        BitSet16 hiRegsLoaded(RegCache.DirtyRegs & 0xFF00);
-        bool previouslyDirty = CPSRDirty;
+        BitSet16 hiRegsLoaded(RegCache.LoadedRegs & 0xFF00);
+        bool cpsrDirty = CPSRDirty;
         SaveCPSR();
+
+        STR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
 
         if (restoreCPSR)
         {
             if (Thumb || CurInstr.Cond() >= 0xE)
-                RegCache.Flush();
+            {
+                for (int reg : hiRegsLoaded)
+                {
+                    RegCache.UnloadRegister(reg);
+                }
+            }
             else
             {
                 // the ugly way...
@@ -319,16 +326,18 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
             QuickCallFunction(X3, jumpToTrampoline<ARMv5>);
         else
             QuickCallFunction(X3, jumpToTrampoline<ARMv4>);
-        
+
         if (!Thumb && restoreCPSR && CurInstr.Cond() < 0xE)
         {
             for (int reg : hiRegsLoaded)
                 LoadReg(reg, RegCache.Mapping[reg]);
         }
 
-        if (previouslyDirty)
-            LoadCPSR();
-        CPSRDirty = previouslyDirty;
+        LDR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
+
+        LoadCPSR();
+        if (CurInstr.Cond() < 0xE)
+            CPSRDirty = cpsrDirty;
     }
 }
 
@@ -368,21 +377,13 @@ void Compiler::T_Comp_BCOND()
     s32 offset = (s32)(CurInstr.Instr << 24) >> 23;
     Comp_JumpTo(R15 + offset + 1, true);
 
-    Comp_BranchSpecialBehaviour();
+    Comp_BranchSpecialBehaviour(true);
 
     FixupBranch skipFailed = B();
     SetJumpTarget(skipExecute);
     Comp_AddCycles_C(true);
 
-    if (CurInstr.BranchFlags & branch_FollowCondTaken)
-    {
-        SaveCPSR(false);
-        RegCache.PrepareExit();
-        
-        ADD(W0, RCycles, ConstantCycles);
-        ABI_PopRegisters(SavedRegs);
-        RET();
-    }
+    Comp_BranchSpecialBehaviour(false);
 
     SetJumpTarget(skipFailed);
 }

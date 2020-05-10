@@ -60,11 +60,11 @@ inline void InvalidateLCDCIfNecessary(u32 addr)
 }
 inline void InvalidateSWRAM7IfNecessary(u32 addr)
 {
-	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM7 - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM7Mask));
+	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM7.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM7.Mask));
 }
 inline void InvalidateSWRAM9IfNecessary(u32 addr)
 {
-	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM9 - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM9Mask));
+	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM9.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM9.Mask));
 }
 inline void InvalidateARM7WRAMIfNecessary(u32 addr)
 {

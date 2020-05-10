@@ -1,8 +1,8 @@
 #include "ARMJIT_Compiler.h"
 
-#include "../ARMInterpreter.h"
-
 #include "../ARMJIT_Internal.h"
+#include "../ARMInterpreter.h"
+#include "../Config.h"
 
 #ifdef __SWITCH__
 #include "../switch/compat_switch.h"
@@ -17,6 +17,7 @@ extern char __start__;
 
 using namespace Arm64Gen;
 
+extern "C" void ARM_Ret();
 
 namespace ARMJIT
 {
@@ -95,35 +96,12 @@ Compiler::Compiler()
 
     for (int i = 0; i < 3; i++)
     {
-        for (int j = 0; j < 2; j++)
-        {
-            MemFunc9[i][j] = Gen_MemoryRoutine9(8 << i, j);
-        }
-    }
-    MemFunc7[0][0] = (void*)NDS::ARM7Read8;
-    MemFunc7[1][0] = (void*)NDS::ARM7Read16;
-    MemFunc7[2][0] = (void*)NDS::ARM7Read32;
-    MemFunc7[0][1] = (void*)NDS::ARM7Write8;
-    MemFunc7[1][1] = (void*)NDS::ARM7Write16;
-    MemFunc7[2][1] = (void*)NDS::ARM7Write32;
-
-    for (int i = 0; i < 2; i++)
-    {
-        for (int j = 0; j < 2; j++)
-        {
-            MemFuncsSeq9[i][j] = Gen_MemoryRoutine9Seq(i, j);
-            MemFuncsSeq7[i][j] = Gen_MemoryRoutine7Seq(i, j);
-        }
-    }
-
-    for (int i = 0; i < 3; i++)
-    {
         JumpToFuncs9[i] = Gen_JumpTo9(i);
         JumpToFuncs7[i] = Gen_JumpTo7(i);
     }
 
     /*
-        W0 - mode
+        W5 - mode
         W1 - reg num
         W3 - in/out value of reg
     */
@@ -131,18 +109,18 @@ Compiler::Compiler()
         ReadBanked = GetRXPtr();
 
         ADD(X2, RCPU, X1, ArithOption(X1, ST_LSL, 2));
-        CMP(W0, 0x11);
+        CMP(W5, 0x11);
         FixupBranch fiq = B(CC_EQ);
         SUBS(W1, W1, 13 - 8);
         ADD(X2, RCPU, X1, ArithOption(X1, ST_LSL, 2));
         FixupBranch notEverything = B(CC_LT);
-        CMP(W0, 0x12);
+        CMP(W5, 0x12);
         FixupBranch irq = B(CC_EQ);
-        CMP(W0, 0x13);
+        CMP(W5, 0x13);
         FixupBranch svc = B(CC_EQ);
-        CMP(W0, 0x17);
+        CMP(W5, 0x17);
         FixupBranch abt = B(CC_EQ);
-        CMP(W0, 0x1B);
+        CMP(W5, 0x1B);
         FixupBranch und = B(CC_EQ);
         SetJumpTarget(notEverything);
         RET();
@@ -167,18 +145,18 @@ Compiler::Compiler()
         WriteBanked = GetRXPtr();
 
         ADD(X2, RCPU, X1, ArithOption(X1, ST_LSL, 2));
-        CMP(W0, 0x11);
+        CMP(W5, 0x11);
         FixupBranch fiq = B(CC_EQ);
         SUBS(W1, W1, 13 - 8);
         ADD(X2, RCPU, X1, ArithOption(X1, ST_LSL, 2));
         FixupBranch notEverything = B(CC_LT);
-        CMP(W0, 0x12);
+        CMP(W5, 0x12);
         FixupBranch irq = B(CC_EQ);
-        CMP(W0, 0x13);
+        CMP(W5, 0x13);
         FixupBranch svc = B(CC_EQ);
-        CMP(W0, 0x17);
+        CMP(W5, 0x17);
         FixupBranch abt = B(CC_EQ);
-        CMP(W0, 0x1B);
+        CMP(W5, 0x1B);
         FixupBranch und = B(CC_EQ);
         SetJumpTarget(notEverything);
         MOVI2R(W4, 0);
@@ -206,10 +184,33 @@ Compiler::Compiler()
         RET();
     }
 
+    {
+        CPSRDirty = true;
+        BranchStub[0] = GetRXPtr();
+        SaveCPSR();
+        MOV(X0, RCPU);
+        QuickCallFunction(X1, ARMJIT::LinkBlock<0>);
+        LoadCPSR();
+        QuickTailCall(X0, ARM_Ret);
+
+        CPSRDirty = true;
+        BranchStub[1] = GetRXPtr();
+        SaveCPSR();
+        MOV(X0, RCPU);
+        QuickCallFunction(X1, ARMJIT::LinkBlock<1>);
+        LoadCPSR();
+        QuickTailCall(X0, ARM_Ret);
+    }
+
     //FlushIcache();
 
     JitMemUseableSize -= GetCodeOffset();
     SetCodeBase((u8*)GetRWPtr(), (u8*)GetRXPtr());
+
+    NearStart = 0;
+    FarStart = NearStart + 12 * 1024 * 1024;
+    NearSize = FarStart - NearStart;
+    FarSize = JitMemUseableSize - FarStart;
 }
 
 Compiler::~Compiler()
@@ -404,29 +405,66 @@ bool Compiler::CanCompile(bool thumb, u16 kind)
     return (thumb ? T_Comp[kind] : A_Comp[kind]) != NULL;
 }
 
-void Compiler::Comp_BranchSpecialBehaviour()
+void Compiler::Comp_BranchSpecialBehaviour(bool taken)
 {
-    if (CurInstr.BranchFlags & branch_IdleBranch)
+    if (taken && CurInstr.BranchFlags & branch_IdleBranch)
     {
         MOVI2R(W0, 1);
         STRB(INDEX_UNSIGNED, W0, RCPU, offsetof(ARM, IdleLoop));
     }
 
-    if (CurInstr.BranchFlags & branch_FollowCondNotTaken)
+    if ((CurInstr.BranchFlags & branch_FollowCondNotTaken && taken)
+        || (CurInstr.BranchFlags & branch_FollowCondTaken && !taken))
     {
-        SaveCPSR(false);
         RegCache.PrepareExit();
-        ADD(W0, RCycles, ConstantCycles);
-        ABI_PopRegisters(SavedRegs);
-        RET();
+
+        if (Config::JIT_BrancheOptimisations == 2 && !(CurInstr.BranchFlags & branch_IdleBranch)
+            && (!taken || (CurInstr.BranchFlags & branch_StaticTarget)))
+        {
+            SUBS(RCycles, RCycles, ConstantCycles);
+            FixupBranch ret = B(CC_MI);
+            LDR(INDEX_UNSIGNED, W0, RCPU, offsetof(ARM, StopExecution));
+            FixupBranch ret2 = CBNZ(W0);
+
+            ptrdiff_t rewritePart = GetCodeOffset();
+            HINT(HINT_NOP);
+
+            MOVI2R(W1, rewritePart);
+            B(BranchStub[Num]);
+
+            SetJumpTarget(ret);
+            SetJumpTarget(ret2);
+        }
+        else
+        {
+            SUB(RCycles, RCycles, ConstantCycles);
+        }
+        QuickTailCall(X0, ARM_Ret);
     }
 }
 
-JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount)
+void Compiler::SwitchToFarCode()
 {
-    if (JitMemUseableSize - GetCodeOffset() < 1024 * 16)
+    NearCode = GetCodeOffset();
+    SetCodePtrUnsafe(FarCode);
+}
+
+void Compiler::SwitchToNearCode()
+{
+    FarCode = GetCodeOffset();
+    SetCodePtrUnsafe(NearCode);
+}
+
+JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount)
+{
+    if (FarSize - (FarCode - FarStart) < 1024 * 4)
     {
-        printf("JIT memory full, resetting...\n");
+        printf("JIT far memory full, resetting...\n");
+        ResetBlockCache();
+    }
+    if (NearSize - (GetCodeOffset() - NearStart) < 1024 * 16)
+    {
+        printf("JIT near memory full, resetting...\n");
         ResetBlockCache();
     }
 
@@ -437,21 +475,7 @@ JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[]
     CurCPU = cpu;
     ConstantCycles = 0;
     RegCache = RegisterCache<Compiler, ARM64Reg>(this, instrs, instrsCount, true);
-
-    //printf("compiling block at %x\n", R15 - (Thumb ? 2 : 4));
-    const u32 ALL_CALLEE_SAVED = 0x7FF80000;
-
-    SavedRegs = BitSet32((RegCache.GetPushRegs() | BitSet32(0x78000000)) & BitSet32(ALL_CALLEE_SAVED));
-
-    //if (Num == 1)
-    {
-        ABI_PushRegisters(SavedRegs);
-
-        MOVP2R(RCPU, CurCPU);
-        MOVI2R(RCycles, 0);
-
-        LoadCPSR();
-    }
+    CPSRDirty = Config::JIT_BrancheOptimisations == 2;
 
     for (int i = 0; i < instrsCount; i++)
     {
@@ -488,6 +512,8 @@ JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[]
         {
             SaveCPSR();
             RegCache.Flush();
+
+            STR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
         }
         else
             RegCache.Prepare(Thumb, i);
@@ -535,25 +561,18 @@ JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[]
                     (this->*comp)();
                 }
 
-                Comp_BranchSpecialBehaviour();
+                Comp_BranchSpecialBehaviour(true);
 
                 if (cond < 0xE)
                 {
-                    if (IrregularCycles)
+                    if (IrregularCycles || (CurInstr.BranchFlags & branch_FollowCondTaken))
                     {
                         FixupBranch skipNop = B();
                         SetJumpTarget(skipExecute);
 
                         Comp_AddCycles_C();
 
-                        if (CurInstr.BranchFlags & branch_FollowCondTaken)
-                        {
-                            SaveCPSR(false);
-                            RegCache.PrepareExit();
-                            ADD(W0, RCycles, ConstantCycles);
-                            ABI_PopRegisters(SavedRegs);
-                            RET();
-                        }
+                        Comp_BranchSpecialBehaviour(false);
 
                         SetJumpTarget(skipNop);
                     }
@@ -565,27 +584,50 @@ JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[]
         }
 
         if (comp == NULL)
+        {
             LoadCPSR();
+            LDR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
+        }
     }
 
     RegCache.Flush();
 
-    //if (Num == 1)
+    if (Config::JIT_BrancheOptimisations == 2
+        && !(instrs[instrsCount - 1].BranchFlags & branch_IdleBranch)
+        && (!instrs[instrsCount - 1].Info.Branches()
+        || instrs[instrsCount - 1].BranchFlags & branch_FollowCondNotTaken
+        || (instrs[instrsCount - 1].BranchFlags & branch_FollowCondTaken && instrs[instrsCount - 1].BranchFlags & branch_StaticTarget)))
     {
-        SaveCPSR();
+        SUBS(RCycles, RCycles, ConstantCycles);
+        FixupBranch ret = B(CC_MI);
+        LDR(INDEX_UNSIGNED, W0, RCPU, offsetof(ARM, StopExecution));
+        FixupBranch ret2 = CBNZ(W0);
 
-        ADD(W0, RCycles, ConstantCycles);
+        ptrdiff_t rewritePart = GetCodeOffset();
+        HINT(HINT_NOP);
 
-        ABI_PopRegisters(SavedRegs);
+        MOVI2R(W1, rewritePart);
+        B(BranchStub[Num]);
+
+        SetJumpTarget(ret);
+        SetJumpTarget(ret2);
     }
-    //else
-    //    ADD(RCycles, RCycles, ConstantCycles);
+    else
+    {
+        SUB(RCycles, RCycles, ConstantCycles);
+    }
+    QuickTailCall(X0, ARM_Ret);
 
-    RET();
+    for (int i = 0; i < VeneersLeft.Length; i++)
+    {
+        SetJumpTarget(std::get<0>(VeneersLeft[i]));
+        B(std::get<1>(VeneersLeft[i]));
+    }
+    VeneersLeft.Clear();
 
     FlushIcache();
-
-    //printf("finished\n");
+    FlushIcacheSection(GetRXBase() + FarLastFlushStart, GetRXBase() + FarCode);
+    FarLastFlushStart = FarCode;
 
     return res;
 }
@@ -593,11 +635,37 @@ JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[]
 void Compiler::Reset()
 {
     SetCodePtr(0);
+    NearCode = NearStart;
+    FarCode = FarStart;
 
     const u32 brk_0 = 0xD4200000;
 
     for (int i = 0; i < JitMemUseableSize / 4; i++)
         *(((u32*)GetRWPtr()) + i) = brk_0;
+}
+
+void Compiler::LinkBlock(u32 offset, JitBlockEntry entry)
+{
+    ptrdiff_t curOffset = GetCodeOffset();
+    SetCodePtrUnsafe(offset);
+    u8* flushStart = (u8*)GetRXPtr();
+    B((void*)entry);
+    u8* flushEnd = (u8*)GetRXPtr();
+    SetCodePtrUnsafe(curOffset);
+    
+    FlushIcacheSection(flushStart, flushEnd);
+}
+
+void Compiler::UnlinkBlock(u32 offset)
+{
+    ptrdiff_t curOffset = GetCodeOffset();
+    SetCodePtrUnsafe(offset);
+    u8* flushStart = (u8*)GetRXPtr();
+    HINT(HINT_NOP);
+    u8* flushEnd = (u8*)GetRXPtr();
+    SetCodePtrUnsafe(curOffset);
+    
+    FlushIcacheSection(flushStart, flushEnd);
 }
 
 void Compiler::Comp_AddCycles_C(bool nonConst)
@@ -609,7 +677,7 @@ void Compiler::Comp_AddCycles_C(bool nonConst)
     if (!nonConst && !CurInstr.Info.Branches())
         ConstantCycles += cycles;
     else
-        ADD(RCycles, RCycles, cycles);
+        SUB(RCycles, RCycles, cycles);
 }
 
 void Compiler::Comp_AddCycles_CI(u32 numI)
@@ -621,7 +689,7 @@ void Compiler::Comp_AddCycles_CI(u32 numI)
     if (Thumb || CurInstr.Cond() >= 0xE)
         ConstantCycles += cycles;
     else
-        ADD(RCycles, RCycles, cycles);
+        SUB(RCycles, RCycles, cycles);
 }
 
 void Compiler::Comp_AddCycles_CI(u32 c, ARM64Reg numI, ArithOption shift)
@@ -630,11 +698,11 @@ void Compiler::Comp_AddCycles_CI(u32 c, ARM64Reg numI, ArithOption shift)
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles)) + c;
 
-    ADD(RCycles, RCycles, numI, shift);
+    SUB(RCycles, RCycles, numI, shift);
     if (Thumb || CurInstr.Cond() >= 0xE)
         ConstantCycles += c;
     else
-        ADD(RCycles, RCycles, cycles);
+        SUB(RCycles, RCycles, cycles);
 }
 
 void Compiler::Comp_AddCycles_CDI()
@@ -671,7 +739,7 @@ void Compiler::Comp_AddCycles_CDI()
         }
         
         if (!Thumb && CurInstr.Cond() < 0xE)
-            ADD(RCycles, RCycles, cycles);
+            SUB(RCycles, RCycles, cycles);
         else
             ConstantCycles += cycles;
     }
@@ -715,7 +783,7 @@ void Compiler::Comp_AddCycles_CD()
     }
 
     if ((!Thumb && CurInstr.Cond() < 0xE) && IrregularCycles)
-        ADD(RCycles, RCycles, cycles);
+        SUB(RCycles, RCycles, cycles);
     else
         ConstantCycles += cycles;
 }

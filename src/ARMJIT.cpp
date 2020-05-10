@@ -29,6 +29,11 @@
 #include "Wifi.h"
 #include "NDSCart.h"
 
+#include "ARMJIT_x64/ARMJIT_Offsets.h"
+static_assert(offsetof(ARM, CPSR) == ARM_CPSR_offset);
+static_assert(offsetof(ARM, Cycles) == ARM_Cycles_offset);
+static_assert(offsetof(ARM, StopExecution) == ARM_StopExecution_offset);
+
 namespace ARMJIT
 {
 
@@ -76,8 +81,8 @@ u32 TranslateAddr9(u32 addr)
 	{
 	case memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (MAIN_RAM_SIZE - 1));
 	case memregion_SWRAM9:
-		if (NDS::SWRAM_ARM9)
-			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM9 - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM9Mask);
+		if (NDS::SWRAM_ARM9.Mem)
+			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM9.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM9.Mask);
 		else
 			return 0;
 	case memregion_ITCM: return ExeMemRegionOffsets[exeMem_ITCM] + (addr & 0x7FFF);
@@ -93,8 +98,8 @@ u32 TranslateAddr7(u32 addr)
 	{
 	case memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (MAIN_RAM_SIZE - 1));
 	case memregion_SWRAM7:
-		if (NDS::SWRAM_ARM7)
-			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM7 - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM7Mask);
+		if (NDS::SWRAM_ARM7.Mem)
+			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM7.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM7.Mask);
 		else
 			return 0;
 	case memregion_BIOS7: return ExeMemRegionOffsets[exeMem_ARM7_BIOS] + addr;
@@ -111,8 +116,11 @@ TinyVector<u32> InvalidLiterals;
 std::unordered_map<u32, JitBlock*> JitBlocks9;
 std::unordered_map<u32, JitBlock*> JitBlocks7;
 
-u8 MemoryStatus9[0x800000];
-u8 MemoryStatus7[0x800000];
+// force them to be on page boundary
+// to they can be accessed with a single adrp instead of needing adrp + add
+// to save some code space
+u8 MemoryStatus9[0x800000] __attribute__((aligned (4096)));
+u8 MemoryStatus7[0x800000] __attribute__((aligned (4096)));
 
 int ClassifyAddress9(u32 addr)
 {
@@ -151,7 +159,7 @@ int ClassifyAddress7(u32 addr)
 		case 0x02800000:
 			return memregion_MainRAM;
 		case 0x03000000:
-			if (NDS::SWRAM_ARM7)
+			if (NDS::SWRAM_ARM7.Mem)
 				return memregion_SWRAM7;
 			else
 				return memregion_WRAM7;
@@ -240,14 +248,14 @@ void UpdateRegionByPseudoPhyiscal(u32 addr, bool invalidate)
 				case exeMem_SWRAM:
 					if (num == 0)
 					{
-						if (NDS::SWRAM_ARM9)
+						if (NDS::SWRAM_ARM9.Mem)
 							mapStart = 0x3000000, mapSize = 0x1000000;
 						else
 							mapStart = mapSize = 0;
 					}
 					else
 					{
-						if (NDS::SWRAM_ARM7)
+						if (NDS::SWRAM_ARM7.Mem)
 							mapStart = 0x3000000, mapSize = 0x800000;
 						else
 							mapStart = mapSize = 0;
@@ -268,7 +276,7 @@ void UpdateRegionByPseudoPhyiscal(u32 addr, bool invalidate)
 				case exeMem_ARM7_WRAM:
 					if (num == 1)
 					{
-						if (NDS::SWRAM_ARM7)
+						if (NDS::SWRAM_ARM7.Mem)
 							mapStart = 0x3800000, mapSize = 0x800000;
 						else
 							mapStart = 0x3000000, mapSize = 0x1000000;
@@ -311,7 +319,7 @@ void UpdateRegionByPseudoPhyiscal(u32 addr, bool invalidate)
 }
 
 template <typename T>
-T SlowRead9(ARMv5* cpu, u32 addr)
+T SlowRead9(u32 addr, ARMv5* cpu)
 {
 	u32 offset = addr & 0x3;
 	addr &= ~(sizeof(T) - 1);
@@ -335,7 +343,7 @@ T SlowRead9(ARMv5* cpu, u32 addr)
 }
 
 template <typename T>
-void SlowWrite9(ARMv5* cpu, u32 addr, T val)
+void SlowWrite9(u32 addr, ARMv5* cpu, T val)
 {
 	addr &= ~(sizeof(T) - 1);
 
@@ -362,13 +370,13 @@ void SlowWrite9(ARMv5* cpu, u32 addr, T val)
 	}
 }
 
-template void SlowWrite9<u32>(ARMv5*, u32, u32);
-template void SlowWrite9<u16>(ARMv5*, u32, u16);
-template void SlowWrite9<u8>(ARMv5*, u32, u8);
+template void SlowWrite9<u32>(u32, ARMv5*, u32);
+template void SlowWrite9<u16>(u32, ARMv5*, u16);
+template void SlowWrite9<u8>(u32, ARMv5*, u8);
 
-template u32 SlowRead9<u32>(ARMv5*, u32);
-template u16 SlowRead9<u16>(ARMv5*, u32);
-template u8 SlowRead9<u8>(ARMv5*, u32);
+template u32 SlowRead9<u32>(u32, ARMv5*);
+template u16 SlowRead9<u16>(u32, ARMv5*);
+template u8 SlowRead9<u8>(u32, ARMv5*);
 
 template <typename T>
 T SlowRead7(u32 addr)
@@ -411,9 +419,9 @@ void SlowBlockTransfer9(u32 addr, u64* data, u32 num, ARMv5* cpu)
 	{
 		addr += PreInc * 4;
 		if (Write)
-			SlowWrite9<u32>(cpu, addr, data[i]);
+			SlowWrite9<u32>(addr, cpu, data[i]);
 		else
-			data[i] = SlowRead9<u32>(cpu, addr);
+			data[i] = SlowRead9<u32>(addr, cpu);
 		addr += !PreInc * 4;
 	}
 }

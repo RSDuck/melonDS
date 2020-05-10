@@ -270,7 +270,8 @@ void Compiler::Comp_MemAccess(int rd, int rn, const ComplexOperand& op2, int siz
                 else
                 {
                     MOV(32, R(RSCRATCH), R(RSCRATCH3));
-                    AND(32, R(RSCRATCH), Imm8(addressMask));
+                    if (size != 8)
+                        AND(32, R(RSCRATCH), Imm8(addressMask));
                 }
                 AND(32, R(RSCRATCH), M(expectedTarget == memregion_SWRAM9 ? &NDS::SWRAM_ARM9Mask : &NDS::SWRAM_ARM7Mask));
                 OpArg memLoc = MRegSum(RSCRATCH, RSCRATCH2);

@@ -9,6 +9,8 @@
 #include "../ARMJIT_Internal.h"
 #include "../ARMJIT_RegisterCache.h"
 
+#include <tuple>
+
 namespace ARMJIT
 {
 
@@ -78,7 +80,7 @@ public:
         return RegCache.Mapping[reg];
     }
 
-    JitBlockEntry CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
+    JitBlockEntry CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
 
     bool CanCompile(bool thumb, u16 kind);
 
@@ -168,7 +170,7 @@ public:
     void Comp_RegShiftImm(int op, int amount, bool S, Op2& op2, Arm64Gen::ARM64Reg tmp = Arm64Gen::W0);
     void Comp_RegShiftReg(int op, bool S, Op2& op2, Arm64Gen::ARM64Reg rs);
 
-    void Comp_MemLoadLiteral(int size, bool signExtend, int rd, u32 addr);
+    bool Comp_MemLoadLiteral(int size, bool signExtend, int rd, u32 addr);
     enum
     {
         memop_Writeback = 1 << 0,
@@ -179,16 +181,34 @@ public:
     };
     void Comp_MemAccess(int rd, int rn, Op2 offset, int size, int flags);
 
-    void* Gen_MemoryRoutine9(int size, bool store);
-
-    void* Gen_MemoryRoutine9Seq(bool store, bool preinc);
-    void* Gen_MemoryRoutine7Seq(bool store, bool preinc);
-
     // 0 = switch mode, 1 = stay arm, 2 = stay thumb
     void* Gen_JumpTo9(int kind);
     void* Gen_JumpTo7(int kind);
 
-    void Comp_BranchSpecialBehaviour();
+    void LinkBlock(u32 offset, JitBlockEntry entry);
+    void UnlinkBlock(u32 offset);
+
+    void Comp_BranchSpecialBehaviour(bool taken);
+
+    void SwitchToFarCode();
+    void SwitchToNearCode();
+
+    JitBlockEntry AddEntryOffset(u32 offset)
+    {
+        return (JitBlockEntry)(GetRXBase() + offset);
+    }
+
+    u32 SubEntryOffset(JitBlockEntry entry)
+    {
+        return (u8*)entry - GetRXBase();
+    }
+
+    ptrdiff_t FarLastFlushStart;
+    ptrdiff_t FarCode, NearCode;
+
+    ptrdiff_t NearStart;
+    ptrdiff_t FarStart;
+    u32 NearSize, FarSize;
 
     bool Exit;
 
@@ -206,14 +226,7 @@ public:
 
     void* ReadBanked, *WriteBanked;
 
-    // [size][store]
-    void* MemFunc9[3][2];
-    void* MemFunc7[3][2];
-
-    // [store][pre increment]
-    void* MemFuncsSeq9[2][2];
-    // "[code in main ram]
-    void* MemFuncsSeq7[2][2];
+    void* BranchStub[2];
 
     void* JumpToFuncs9[3];
     void* JumpToFuncs7[3];
@@ -223,6 +236,8 @@ public:
     bool CPSRDirty = false;
 
     bool IrregularCycles = false;
+
+    TinyVector<std::tuple<Arm64Gen::FixupBranch, u8*>> VeneersLeft;
 
 #ifdef __SWITCH__
     void* JitRWBase;
