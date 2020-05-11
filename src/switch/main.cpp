@@ -39,6 +39,8 @@ extern std::unordered_map<u32, u32> arm7BlockFrequency;
 
 namespace Config
 {
+int CursorMode;
+int CursorClickMode;
 
 int ScreenRotation;
 int ScreenGap;
@@ -66,6 +68,7 @@ ConfigEntry PlatformConfigFile[] =
     {"Filtering",      0, &Filtering,      1, NULL, 0},
     {"IntegerScaling", 0, &IntegerScaling, 0, NULL, 0},
     {"GlobalRotation", 0, &GlobalRotation, 0, NULL, 0},
+    {"CursorMode",     0, &CursorMode,     0, NULL, 0},
 
     {"LastROMFolder", 1, LastROMFolder, 0, (char*)"/", 511},
 
@@ -306,28 +309,7 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
 
     ImGui::Render();
     ImGui_ImplDeko3D_RenderDrawData(ImGui::GetDrawData(), gCmdbuf, &transform, Config::GlobalRotation);
-/*
-    gCmdbuf.barrier(DkBarrier_Fragments, DkInvalidateFlags_Image);
 
-    colorTarget = {gFramebuffers[slot]};
-    gCmdbuf.bindRenderTargets(&colorTarget);
-    gCmdbuf.setViewports(0, {{0, 0, 1280, 720}});
-    gCmdbuf.setScissors(0, {{0, 0, 1280, 720}});
-    gCmdbuf.bindColorState(dk::ColorState().setBlendEnable(0, false));
-
-    ImGui_GfxTransform transform = {0};
-    xm4_orthographic(transform.ProjMtx, -1.f, 1.f, -1.f, 1.f, -1.f, 1.f);
-    float rot[16];
-    xm4_rotatef(rot, M_PI_2 * Config::GlobalRotation, 0.f, 0.f, 1.f);
-    xm4_mul(transform.ProjMtx, transform.ProjMtx, rot);
-    transform.TexMtx[0] = screenWidth / 1280.f;
-    transform.TexMtx[5] = screenHeight / 1280.f;
-    ImGui_ImplDeko3D_SetTransform(gCmdbuf, &transform);
-
-    gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(1, 0));
-    gCmdbuf.bindVtxBuffer(0, fullscreenQuadMem.GetGpuAddr(), fullscreenQuadMem.size);
-    gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 0, 0);
-*/
     gCmdbuf.signalFence(gCmdFence[slot]);
 
     gQueue.submitCommands(gCmdbuf.finishList());
@@ -1112,6 +1094,9 @@ int main(int argc, char* argv[])
     loadMicSample();
 
     int screenWidth, screenHeight;
+    int cursorX = 0, cursorY = 0;
+    float cursorVelX = 0.f, cursorVelY = 0.f;
+    int touchscreenInputSource = 0;
 
     if (Config::GlobalRotation % 2 == 0)
     {
@@ -1212,6 +1197,16 @@ int main(int argc, char* argv[])
 
     int mainScreenPos[3];
 
+    float joyconRightCalibration[3] = {1.f, 0.f, 0.f};
+    float joyconUpCalibration[3] = {0.f, 0.f, 1.f};
+    bool touchDownKey = false;
+
+    u32 joyconSixaxisHandles[2];
+    hidGetSixAxisSensorHandles(joyconSixaxisHandles, 2, CONTROLLER_PLAYER_1, TYPE_JOYCON_PAIR);
+    hidStartSixAxisSensor(joyconSixaxisHandles[0]);
+    hidStartSixAxisSensor(joyconSixaxisHandles[1]);
+    SixAxisSensorValues sixaxisValues;
+
     while (appletMainLoop() && running)
     {
         hidScanInput();
@@ -1220,6 +1215,7 @@ int main(int argc, char* argv[])
         u32 keysUp = hidKeysUp(CONTROLLER_P1_AUTO);
         u32 keysHeld = hidKeysHeld(CONTROLLER_P1_AUTO);
 
+        bool touchDown = false;
 
         if (guiState > 0 && keysDown & KEY_ZL)
         {
@@ -1300,7 +1296,7 @@ int main(int argc, char* argv[])
 
                 feedMicAudio(microphoneState);
 
-                if (keysDown & KEY_ZR)
+                if (keysDown & KEY_RSTICK)
                 {
                     switch (Config::ScreenSizing)
                     {
@@ -1345,6 +1341,112 @@ int main(int argc, char* argv[])
                     io.NavInputs[ImGuiNavInput_LStickRight] = (float)lstick.dx / JOYSTICK_MAX;
             }
 
+            if (Config::CursorClickMode == 0)
+                touchDownKey = keysHeld & KEY_ZR;
+            else if (keysDown & KEY_ZR)
+                touchDownKey ^= true;
+
+            touchDown |= touchDownKey;
+
+            JoystickPosition rstick;
+            hidJoystickRead(&rstick, CONTROLLER_P1_AUTO, JOYSTICK_RIGHT);
+
+            hidSixAxisSensorValuesRead(&sixaxisValues, CONTROLLER_P1_AUTO, 1);
+
+            if (Config::CursorMode < 2)
+            {
+                if (rstick.dx * rstick.dx + rstick.dy * rstick.dy < JOYSTICK_MAX / 10)
+                {
+                    cursorVelX = 0.f;
+                    cursorVelY = 0.f;
+
+                    touchscreenInputSource = 0;
+                }
+                else
+                {
+                    touchscreenInputSource = 0;
+
+                    cursorVelX += (float)rstick.dx / JOYSTICK_MAX * std::max(botWidth, botHeight) / 8.f;
+                    cursorVelY += (float)-rstick.dy / JOYSTICK_MAX * std::max(botWidth, botHeight) / 8.f;
+
+                    float maxSpeed = std::max(botWidth, botHeight) * 1.5f;
+
+                    if (cursorVelX < -maxSpeed)
+                        cursorVelX = -maxSpeed;
+                    if (cursorVelX > maxSpeed)
+                        cursorVelX = maxSpeed;
+                    if (cursorVelY < -maxSpeed)
+                        cursorVelY = -maxSpeed;
+                    if (cursorVelY > maxSpeed)
+                        cursorVelY = maxSpeed;
+
+                    // allow for quick turns
+                    if ((cursorVelX > 0.f && rstick.dx < 0) || (cursorVelX < 0.f && rstick.dx > 0))
+                        cursorVelX = 0.f;
+                    if ((cursorVelY > 0.f && rstick.dy > 0) || (cursorVelY < 0.f && rstick.dy < 0))
+                        cursorVelY = 0.f;
+                }
+
+                if (Config::CursorMode == 0) // mouse mode
+                {
+                    cursorX += cursorVelX / 60.f; // framerate independent eehhh
+                    cursorY += cursorVelY / 60.f;
+                }
+                else // offset mode
+                {
+                    cursorX = (botX + botWidth / 2) + (float)rstick.dx / JOYSTICK_MAX / 2.f * botWidth;
+                    cursorY = (botY + botHeight / 2) - (float)rstick.dy / JOYSTICK_MAX / 2.f * botHeight;
+                }
+            }
+            else
+            {
+                float forward[] = {sixaxisValues.orientation[1].x, sixaxisValues.orientation[1].y,
+                    sixaxisValues.orientation[1].z};
+                xv_norm(forward, forward, 3);
+
+                float xAngle = xv3_dot(forward, joyconRightCalibration);
+                float zAngle = xv3_dot(forward, joyconUpCalibration);
+
+                touchscreenInputSource = 0;
+
+                cursorX = (botX + botWidth / 2) + xAngle / M_PI * 8.f * std::max(botWidth, botHeight);
+                cursorY = (botY + botHeight / 2) - zAngle / M_PI * 8.f * std::max(botWidth, botHeight);
+            
+                if (keysHeld & KEY_ZR && keysHeld & KEY_ZL)
+                {
+                    joyconUpCalibration[0] = sixaxisValues.orientation[2].x;
+                    joyconUpCalibration[1] = sixaxisValues.orientation[2].y;
+                    joyconUpCalibration[2] = sixaxisValues.orientation[2].z;
+                    joyconRightCalibration[0] = sixaxisValues.orientation[0].x;
+                    joyconRightCalibration[1] = sixaxisValues.orientation[0].y;
+                    joyconRightCalibration[2] = sixaxisValues.orientation[0].z;
+                    
+                    xv_norm(joyconUpCalibration, joyconUpCalibration, 3);
+                    xv_norm(joyconRightCalibration, joyconRightCalibration, 3);
+                }
+            }
+
+            if (cursorX < botX)
+            {
+                cursorX = botX - 1;
+                touchscreenInputSource = 1;
+            }
+            else if (cursorX >= botX + botWidth)
+            {
+                cursorX = botX + botWidth;
+                touchscreenInputSource = 1;
+            }
+            if (cursorY < botY)
+            {
+                cursorY = botY - 1;
+                touchscreenInputSource = 1;
+            }
+            else if (cursorY >= botY + botHeight)
+            {
+                cursorY = botY + botHeight;
+                touchscreenInputSource = 1;
+            }
+
             if (hidTouchCount() > 0)
             {
                 io.MouseDrawCursor = false;
@@ -1368,35 +1470,40 @@ int main(int argc, char* argv[])
 
                 if (!io.WantCaptureMouse && rotatedTouch[0] >= botX && rotatedTouch[0] < (botX + botWidth) && rotatedTouch[1] >= botY && rotatedTouch[1] < (botY + botHeight))
                 {
-                    int x, y;
-                    if (Config::ScreenRotation == 0) // 0
-                    {
-                        x = (rotatedTouch[0] - botX) * 256.0f / botWidth;
-                        y = (rotatedTouch[1] - botY) * 256.0f / botWidth;
-                    }
-                    else if (Config::ScreenRotation == 1) // 90
-                    {
-                        x = (rotatedTouch[1] - botY) * -192.0f / botWidth;
-                        y = (rotatedTouch[0] - botX) *  192.0f / botWidth;
-                    }
-                    else if (Config::ScreenRotation == 2) // 180
-                    {
-                        x =       (rotatedTouch[0] - botX) * -256.0f / botWidth;
-                        y = 192 - (rotatedTouch[1] - botY) *  256.0f / botWidth;
-                    }
-                    else // 270
-                    {
-                        x =       (rotatedTouch[1] - botY) * 192.0f / botWidth;
-                        y = 192 - (rotatedTouch[0] - botX) * 192.0f / botWidth;
-                    }
-                    NDS::PressKey(16 + 6);
-                    NDS::TouchScreen(x, y);
+                    touchscreenInputSource = 1;
+
+                    cursorX = rotatedTouch[0];
+                    cursorY = rotatedTouch[1];
+
+                    touchDown = true;
                 }
-                else
+            }
+
+            if (touchDown)
+            {
+                int x, y;
+                if (Config::ScreenRotation == 0) // 0
                 {
-                    NDS::ReleaseKey(16 + 6);
-                    NDS::ReleaseScreen();
+                    x = (cursorX - botX) * 256.0f / botWidth;
+                    y = (cursorY - botY) * 256.0f / botWidth;
                 }
+                else if (Config::ScreenRotation == 1) // 90
+                {
+                    x = (cursorY - botY) * -192.0f / botWidth;
+                    y = (cursorX - botX) *  192.0f / botWidth;
+                }
+                else if (Config::ScreenRotation == 2) // 180
+                {
+                    x =       (cursorX - botX) * -256.0f / botWidth;
+                    y = 192 - (cursorY - botY) *  256.0f / botWidth;
+                }
+                else // 270
+                {
+                    x =       (cursorY - botY) * 192.0f / botWidth;
+                    y = 192 - (cursorX - botX) * 192.0f / botWidth;
+                }
+                NDS::PressKey(16 + 6);
+                NDS::TouchScreen(x, y);
             }
             else
             {
@@ -1413,6 +1520,14 @@ int main(int argc, char* argv[])
         {
             entered = 0;
             sectionTicksTotal = 0;
+
+            if (touchDown && touchscreenInputSource == 0)
+            {
+                ImGui::GetForegroundDrawList()->AddCircleFilled(ImVec2(cursorX, cursorY), 14.f, ImColor(255, 200, 0));
+            }
+            else if (!touchDown && touchscreenInputSource == 0)
+                ImGui::GetForegroundDrawList()->AddRect(ImVec2(cursorX - 8, cursorY - 8), 
+                    ImVec2(cursorX + 8, cursorY + 8), ImColor(127, 127, 127), 0.f, 15, 4.f);
 
             //arm9BlockFrequency.clear();
             //arm7BlockFrequency.clear();
@@ -1652,8 +1767,13 @@ int main(int argc, char* argv[])
             if (showGui)
             {
                 ImGui::Begin("Navigation");
+                ImGui::Combo("Touch mode", &Config::CursorMode, "Mouse mode\0" "Offset mode\0" "Motion control!\0");
+                ImGui::Combo("Touch click mode", &Config::CursorClickMode, "Hold\0" "Toggle\0");
+                ImGui::BulletText("Using the Switch's touchscreen is always possible");
                 ImGui::BulletText("Hide/unhide GUI using ZL");
-                ImGui::BulletText("Press ZR to quickly switch screen emphasis");
+                ImGui::BulletText("Press the right stick to quickly switch screen emphasis");
+                ImGui::BulletText("Use ZL+ZR to recenter the gyro cursor");
+                ImGui::BulletText("In mouse or motion control mode move the cursor offscreen to hide it");
                 if (navInput)
                     navInput = navInput && !ImGui::Button("Give key input back to game");
                 else
@@ -1788,6 +1908,9 @@ int main(int argc, char* argv[])
 
     if (romSramPath)
         delete[] romSramPath;
+    
+    hidStopSixAxisSensor(joyconSixaxisHandles[0]);
+    hidStopSixAxisSensor(joyconSixaxisHandles[1]);
 
     threadWaitForExit(&audioThread);
     threadClose(&audioThread);

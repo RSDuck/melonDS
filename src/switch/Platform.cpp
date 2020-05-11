@@ -30,6 +30,10 @@ FILE* OpenFile(const char* path, const char* mode, bool mustexist)
 
 FILE* OpenLocalFile(const char* path, const char* mode)
 {
+    FILE* ret = fopen(path, mode);
+    if (ret)
+        return ret;
+
     const char* configDir = "/melonds/";
     int configPathLen = strlen(configDir);
     int pathLen = strlen(path);
@@ -38,7 +42,7 @@ FILE* OpenLocalFile(const char* path, const char* mode)
     strcpy(resPath, configDir);
     strcpy(resPath + configPathLen, path);
 
-    FILE* ret = fopen(resPath, mode);
+    ret = fopen(resPath, mode);
     delete[] resPath;
 
     return ret;

@@ -27,7 +27,7 @@ else()
 endif()
 
 add_custom_command(OUTPUT control.nacp
-                   COMMAND ${NACPTOOL} --create "melonDS switch fast alpha" "Arisotura, RSDuck, Hydr8gon" "0.1" ${CMAKE_BINARY_DIR}/control.nacp)
+                   COMMAND ${NACPTOOL} --create "melonDS switch fast alpha" "Arisotura, RSDuck, Hydr8gon" "release 4" ${CMAKE_BINARY_DIR}/control.nacp)
 
 make_directory(${CMAKE_BINARY_DIR}/romfs/shaders)
 

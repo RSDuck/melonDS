@@ -182,11 +182,6 @@ void Compiler::Comp_MemAccess(int rd, int rn, Op2 offset, int size, int flags)
         FixupBranch slowPath;
         if (compileSlowPath)
         {
-            MOVP2R(X7, &arg);
-            LDR(INDEX_UNSIGNED, W6, X7, 0);
-            ADD(W6, W6, 1);
-            STR(INDEX_UNSIGNED, W6, X7, 0);
-
             LSR(W1, W0, 9);
             MOVP2R(X2, Num == 0 ? MemoryStatus9 : MemoryStatus7);
             LDRB(W1, X2, X1);
