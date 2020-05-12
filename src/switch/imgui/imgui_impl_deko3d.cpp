@@ -1,6 +1,7 @@
 #include "imgui.h"
 #include "imgui_impl_deko3d.h"
 #include <stdio.h>
+#include <malloc.h>
 
 #include <deko3d.hpp>
 

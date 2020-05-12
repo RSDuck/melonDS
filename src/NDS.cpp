@@ -2685,7 +2685,7 @@ u8 ARM9IORead8(u32 addr)
         return GPU3D::Read8(addr);
     }
 
-    printf("unknown ARM9 IO read8 %08X %08X\n", addr, ARM9->R[15]);
+    //printf("unknown ARM9 IO read8 %08X %08X\n", addr, ARM9->R[15]);
     return 0;
 }
 
@@ -2807,7 +2807,7 @@ u16 ARM9IORead16(u32 addr)
         return GPU3D::Read16(addr);
     }
 
-    printf("unknown ARM9 IO read16 %08X %08X\n", addr, ARM9->R[15]);
+    //printf("unknown ARM9 IO read16 %08X %08X\n", addr, ARM9->R[15]);
     return 0;
 }
 
@@ -2926,7 +2926,7 @@ u32 ARM9IORead32(u32 addr)
         return GPU3D::Read32(addr);
     }
 
-    printf("unknown ARM9 IO read32 %08X %08X\n", addr, ARM9->R[15]);
+    //printf("unknown ARM9 IO read32 %08X %08X\n", addr, ARM9->R[15]);
     return 0;
 }
 
@@ -3006,7 +3006,7 @@ void ARM9IOWrite8(u32 addr, u8 val)
         return;
     }
 
-    printf("unknown ARM9 IO write8 %08X %02X %08X\n", addr, val, ARM9->R[15]);
+    //printf("unknown ARM9 IO write8 %08X %02X %08X\n", addr, val, ARM9->R[15]);
 }
 
 void ARM9IOWrite16(u32 addr, u16 val)
@@ -3168,7 +3168,7 @@ void ARM9IOWrite16(u32 addr, u16 val)
         return;
     }
 
-    printf("unknown ARM9 IO write16 %08X %04X %08X\n", addr, val, ARM9->R[15]);
+    //printf("unknown ARM9 IO write16 %08X %04X %08X\n", addr, val, ARM9->R[15]);
 }
 
 void ARM9IOWrite32(u32 addr, u32 val)
@@ -3326,7 +3326,7 @@ void ARM9IOWrite32(u32 addr, u32 val)
         return;
     }
 
-    printf("unknown ARM9 IO write32 %08X %08X %08X\n", addr, val, ARM9->R[15]);
+    //printf("unknown ARM9 IO write32 %08X %08X %08X\n", addr, val, ARM9->R[15]);
 }
 
 
@@ -3371,7 +3371,7 @@ u8 ARM7IORead8(u32 addr)
         return SPU::Read8(addr);
     }
 
-    printf("unknown ARM7 IO read8 %08X %08X\n", addr, ARM7->R[15]);
+    //printf("unknown ARM7 IO read8 %08X %08X\n", addr, ARM7->R[15]);
     return 0;
 }
 
@@ -3450,7 +3450,7 @@ u16 ARM7IORead16(u32 addr)
         return SPU::Read16(addr);
     }
 
-    printf("unknown ARM7 IO read16 %08X %08X\n", addr, ARM7->R[15]);
+    //printf("unknown ARM7 IO read16 %08X %08X\n", addr, ARM7->R[15]);
     return 0;
 }
 
@@ -3536,7 +3536,7 @@ u32 ARM7IORead32(u32 addr)
         return SPU::Read32(addr);
     }
 
-    printf("unknown ARM7 IO read32 %08X %08X\n", addr, ARM7->R[15]);
+    //printf("unknown ARM7 IO read32 %08X %08X\n", addr, ARM7->R[15]);
     return 0;
 }
 
@@ -3611,7 +3611,7 @@ void ARM7IOWrite8(u32 addr, u8 val)
         return;
     }
 
-    printf("unknown ARM7 IO write8 %08X %02X %08X\n", addr, val, ARM7->R[15]);
+    //printf("unknown ARM7 IO write8 %08X %02X %08X\n", addr, val, ARM7->R[15]);
 }
 
 void ARM7IOWrite16(u32 addr, u16 val)
@@ -3736,7 +3736,7 @@ void ARM7IOWrite16(u32 addr, u16 val)
         return;
     }
 
-    printf("unknown ARM7 IO write16 %08X %04X %08X\n", addr, val, ARM7->R[15]);
+    //printf("unknown ARM7 IO write16 %08X %04X %08X\n", addr, val, ARM7->R[15]);
 }
 
 void ARM7IOWrite32(u32 addr, u32 val)
@@ -3845,7 +3845,7 @@ void ARM7IOWrite32(u32 addr, u32 val)
         return;
     }
 
-    printf("unknown ARM7 IO write32 %08X %08X %08X\n", addr, val, ARM7->R[15]);
+    //printf("unknown ARM7 IO write32 %08X %08X %08X\n", addr, val, ARM7->R[15]);
 }
 
 }

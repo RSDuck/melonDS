@@ -742,7 +742,7 @@ void Compiler::Comp_AddCycles_C(bool forceNonConstant)
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 1 : 3]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles);
 
-    if ((!Thumb && CurInstr.Cond() < 0xE) || forceNonConstant)
+    if (forceNonConstant)
         SUB(32, MDisp(RCPU, offsetof(ARM, Cycles)), Imm8(cycles));
     else
         ConstantCycles += cycles;
@@ -750,6 +750,8 @@ void Compiler::Comp_AddCycles_C(bool forceNonConstant)
 
 void Compiler::Comp_AddCycles_CI(u32 i)
 {
+    IrregularCycles = true;
+
     s32 cycles = (Num ?
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles)) + i;
@@ -762,6 +764,8 @@ void Compiler::Comp_AddCycles_CI(u32 i)
 
 void Compiler::Comp_AddCycles_CI(Gen::X64Reg i, int add)
 {
+    IrregularCycles = true;
+
     s32 cycles = Num ?
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles);
@@ -810,7 +814,7 @@ void Compiler::Comp_AddCycles_CDI()
         {
             cycles = numC + numD + 1;
         }
-        
+
         if (!Thumb && CurInstr.Cond() < 0xE)
             SUB(32, MDisp(RCPU, offsetof(ARM, Cycles)), Imm8(cycles));
         else
@@ -836,7 +840,7 @@ void Compiler::Comp_AddCycles_CD()
         s32 numC = NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2];
         s32 numD = CurInstr.DataCycles;
 
-        if ((CurInstr.DataRegion >> 4) == 0x02)
+        if ((CurInstr.DataRegion >> 24) == 0x02)
         {
             if (CodeRegion == 0x02)
                 cycles += numC + numD;

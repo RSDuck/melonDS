@@ -152,23 +152,19 @@ void* Compiler::Gen_JumpTo9(int kind)
     AlignCode16();
     void* res = GetRXPtr();
 
-    MOVI2R(W2, kCodeCacheTiming);
-    // W1 - code cycles non branch
-    // W2 - branch code cycles
     LSR(W1, W0, 12);
-    LSL(W1, W1, 2);
     ADDI2R(W1, W1, offsetof(ARMv5, MemTimings), W2);
     LDRB(W1, RCPU, W1);
 
-    LDR(INDEX_UNSIGNED, W3, RCPU, offsetof(ARMv5, ITCMSize));
+    LDR(INDEX_UNSIGNED, W2, RCPU, offsetof(ARMv5, ITCMSize));
 
     STR(INDEX_UNSIGNED, W1, RCPU, offsetof(ARMv5, RegionCodeCycles));
 
-    CMP(W0, W3);
-    FixupBranch outsideITCM = B(CC_LO);
-    MOVI2R(W1, 1);
-    MOVI2R(W2, 1);
-    SetJumpTarget(outsideITCM);
+    CMP(W1, 0xFF);
+    MOVI2R(W3, kCodeCacheTiming);
+    CSEL(W1, W3, W1, CC_EQ);
+    CMP(W0, W2);
+    CSINC(W1, W1, WZR, CC_HS);
 
     FixupBranch switchToThumb;
     if (kind == 0)
@@ -176,40 +172,36 @@ void* Compiler::Gen_JumpTo9(int kind)
 
     if (kind == 0 || kind == 1)
     {
-        ANDI2R(W0, W0, ~3);
-
+        // ARM
         if (kind == 0)
             ANDI2R(RCPSR, RCPSR, ~0x20);
 
-        ADD(W3, W0, 4);
-        STR(INDEX_UNSIGNED, W3, RCPU, offsetof(ARM, R[15]));
+        ANDI2R(W0, W0, ~3);
+        ADD(W0, W0, 4);
+        STR(INDEX_UNSIGNED, W0, RCPU, offsetof(ARMv5, R[15]));
 
-        ADD(W1, W1, W2);
+        ADD(W1, W1, W1);
         SUB(RCycles, RCycles, W1);
-
         RET();
     }
+
     if (kind == 0 || kind == 2)
     {
+        // Thumb
         if (kind == 0)
         {
             SetJumpTarget(switchToThumb);
-
             ORRI2R(RCPSR, RCPSR, 0x20);
         }
 
         ANDI2R(W0, W0, ~1);
+        ADD(W0, W0, 2);
+        STR(INDEX_UNSIGNED, W0, RCPU, offsetof(ARMv5, R[15]));
 
-        ADD(W3, W0, 2);
-        STR(INDEX_UNSIGNED, W3, RCPU, offsetof(ARM, R[15]));
-
-        FixupBranch halfwordLoc = TBZ(W0, 1);
-        ADD(W1, W1, W2);
+        ADD(W2, W1, W1);
+        TSTI2R(W0, 0x2);
+        CSEL(W1, W1, W2, CC_EQ);
         SUB(RCycles, RCycles, W1);
-        RET();
-
-        SetJumpTarget(halfwordLoc);
-        SUB(RCycles, RCycles, W2);
         RET();
     }
 
@@ -290,8 +282,7 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
         BitSet16 hiRegsLoaded(RegCache.LoadedRegs & 0xFF00);
         bool cpsrDirty = CPSRDirty;
         SaveCPSR();
-
-        STR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
+        SaveCycles();
 
         if (restoreCPSR)
         {
@@ -333,7 +324,7 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
                 LoadReg(reg, RegCache.Mapping[reg]);
         }
 
-        LDR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
+        LoadCycles();
 
         LoadCPSR();
         if (CurInstr.Cond() < 0xE)

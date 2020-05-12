@@ -185,14 +185,14 @@ void resetTmp()
     tempBuffer.Reset();
 }
 
-void dkError(void* userData, const char* context, DkResult result)
+void dkError(void* userData, const char* context, DkResult result, const char* message)
 {
-    printf("errorrrrrr %d\n", result);
+    printf("errorrrrrr %d %s\n", result, message);
 }
 
 void graphicsInitialize()
 {
-    gDevice = dk::DeviceMaker{}.setCbError(dkError).create();
+    gDevice = dk::DeviceMaker{}.setCbDebug(dkError).create();
 
     gQueue = dk::QueueMaker{gDevice}.setFlags(DkQueueFlags_Graphics).create();
 

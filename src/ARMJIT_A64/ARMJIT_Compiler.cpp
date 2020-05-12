@@ -188,17 +188,21 @@ Compiler::Compiler()
         CPSRDirty = true;
         BranchStub[0] = GetRXPtr();
         SaveCPSR();
+        SaveCycles();
         MOV(X0, RCPU);
         QuickCallFunction(X1, ARMJIT::LinkBlock<0>);
         LoadCPSR();
+        LoadCycles();
         QuickTailCall(X0, ARM_Ret);
 
         CPSRDirty = true;
         BranchStub[1] = GetRXPtr();
         SaveCPSR();
+        SaveCycles();
         MOV(X0, RCPU);
         QuickCallFunction(X1, ARMJIT::LinkBlock<1>);
         LoadCPSR();
+        LoadCycles();
         QuickTailCall(X0, ARM_Ret);
     }
 
@@ -226,6 +230,16 @@ Compiler::~Compiler()
         free(JitRWBase);
     }
 #endif
+}
+
+void Compiler::LoadCycles()
+{
+    LDR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
+}
+
+void Compiler::SaveCycles()
+{
+    STR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
 }
 
 void Compiler::LoadReg(int reg, ARM64Reg nativeReg)
@@ -510,10 +524,9 @@ JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, F
 
         if (comp == NULL)
         {
+            SaveCycles();
             SaveCPSR();
             RegCache.Flush();
-
-            STR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
         }
         else
             RegCache.Prepare(Thumb, i);
@@ -585,8 +598,8 @@ JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, F
 
         if (comp == NULL)
         {
+            LoadCycles();
             LoadCPSR();
-            LDR(INDEX_UNSIGNED, RCycles, RCPU, offsetof(ARM, Cycles));
         }
     }
 
@@ -668,13 +681,13 @@ void Compiler::UnlinkBlock(u32 offset)
     FlushIcacheSection(flushStart, flushEnd);
 }
 
-void Compiler::Comp_AddCycles_C(bool nonConst)
+void Compiler::Comp_AddCycles_C(bool forceNonConstant)
 {
     s32 cycles = Num ?
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 1 : 3]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles);
 
-    if (!nonConst && !CurInstr.Info.Branches())
+    if (forceNonConstant)
         ConstantCycles += cycles;
     else
         SUB(RCycles, RCycles, cycles);
@@ -682,11 +695,13 @@ void Compiler::Comp_AddCycles_C(bool nonConst)
 
 void Compiler::Comp_AddCycles_CI(u32 numI)
 {
+    IrregularCycles = true;
+
     s32 cycles = (Num ?
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles)) + numI;
 
-    if (Thumb || CurInstr.Cond() >= 0xE)
+    if (Thumb || CurInstr.Cond() == 0xE)
         ConstantCycles += cycles;
     else
         SUB(RCycles, RCycles, cycles);
@@ -694,13 +709,15 @@ void Compiler::Comp_AddCycles_CI(u32 numI)
 
 void Compiler::Comp_AddCycles_CI(u32 c, ARM64Reg numI, ArithOption shift)
 {
+    IrregularCycles = true;
+
     s32 cycles = (Num ?
         NDS::ARM7MemTimings[CurInstr.CodeCycles][Thumb ? 0 : 2]
         : ((R15 & 0x2) ? 0 : CurInstr.CodeCycles)) + c;
 
     SUB(RCycles, RCycles, numI, shift);
     if (Thumb || CurInstr.Cond() >= 0xE)
-        ConstantCycles += c;
+        ConstantCycles += cycles;
     else
         SUB(RCycles, RCycles, cycles);
 }

@@ -91,7 +91,7 @@ public:
 
     void Reset();
 
-    void Comp_AddCycles_C(bool forceNonConst = false);
+    void Comp_AddCycles_C(bool forceNonConstant = false);
     void Comp_AddCycles_CI(u32 numI);
     void Comp_AddCycles_CI(u32 c, Arm64Gen::ARM64Reg numI, Arm64Gen::ArithOption shift);
     void Comp_AddCycles_CD();
@@ -104,6 +104,9 @@ public:
 
     void LoadCPSR();
     void SaveCPSR(bool markClean = true);
+
+    void LoadCycles();
+    void SaveCycles();
 
     void Nop() {}
 
