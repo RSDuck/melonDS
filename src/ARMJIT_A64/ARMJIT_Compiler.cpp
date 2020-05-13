@@ -47,6 +47,132 @@ void Compiler::MovePC()
     ADD(MapReg(15), MapReg(15), Thumb ? 2 : 4);
 }
 
+void Compiler::A_Comp_MRS()
+{
+    Comp_AddCycles_C();
+
+    ARM64Reg rd = MapReg(CurInstr.A_Reg(12));
+
+    if (CurInstr.Instr & (1 << 22))
+    {
+        ANDI2R(W5, RCPSR, 0x1F);
+        MOVI2R(W3, 0);
+        MOVI2R(W1, 15 - 8);
+        BL(ReadBanked);
+        MOV(rd, W3);
+    }
+    else
+        MOV(rd, RCPSR);
+}
+
+void Compiler::A_Comp_MSR()
+{
+    Comp_AddCycles_C();
+
+    ARM64Reg val;
+    if (CurInstr.Instr & (1 << 25))
+    {
+        val = W0;
+        MOVI2R(val, ROR((CurInstr.Instr & 0xFF), ((CurInstr.Instr >> 7) & 0x1E)));
+    }
+    else
+    {
+        val = MapReg(CurInstr.A_Reg(0));
+    }
+
+    u32 mask = 0;
+    if (CurInstr.Instr & (1<<16)) mask |= 0x000000FF;
+    if (CurInstr.Instr & (1<<17)) mask |= 0x0000FF00;
+    if (CurInstr.Instr & (1<<18)) mask |= 0x00FF0000;
+    if (CurInstr.Instr & (1<<19)) mask |= 0xFF000000;
+
+    if (CurInstr.Instr & (1 << 22))
+    {
+        ANDI2R(W5, RCPSR, 0x1F);
+        MOVI2R(W3, 0);
+        MOVI2R(W1, 15 - 8);
+        BL(ReadBanked);
+
+        MOVI2R(W1, mask);
+        MOVI2R(W2, mask & 0xFFFFFF00);
+        ANDI2R(W5, RCPSR, 0x1F);
+        CMP(W5, 0x10);
+        CSEL(W1, W2, W1, CC_EQ);
+
+        BIC(W3, W3, W1);
+        AND(W0, val, W1);
+        ORR(W3, W3, W0);
+
+        MOVI2R(W1, 15 - 8);
+
+        BL(WriteBanked);
+    }
+    else
+    {
+        mask &= 0xFFFFFFDF;
+        CPSRDirty = true;
+
+        if ((mask & 0xFF) == 0)
+        {
+            ANDI2R(RCPSR, RCPSR, ~mask);
+            ANDI2R(W0, val, mask);
+            ORR(RCPSR, RCPSR, W0);
+        }
+        else
+        {
+            MOVI2R(W2, mask);
+            MOVI2R(W3, mask & 0xFFFFFF00);
+            ANDI2R(W1, RCPSR, 0x1F);
+            // W1 = first argument
+            CMP(W1, 0x10);
+            CSEL(W2, W3, W2, CC_EQ);
+
+            BIC(RCPSR, RCPSR, W2);
+            AND(W0, val, W2);
+            ORR(RCPSR, RCPSR, W0);
+
+            MOV(W2, RCPSR);
+            MOV(X0, RCPU);
+
+            PushRegs(true);
+
+            QuickCallFunction(X3, (void*)&ARM::UpdateMode);
+        
+            PopRegs(true);
+        }
+    }
+}
+
+void Compiler::PushRegs(bool saveHiRegs)
+{
+    if (saveHiRegs)
+    {
+        if (Thumb || CurInstr.Cond() == 0xE)
+        {
+            BitSet16 hiRegsLoaded(RegCache.LoadedRegs & 0x7F00);
+            for (int reg : hiRegsLoaded)
+                RegCache.UnloadRegister(reg);
+        }
+        else
+        {
+            BitSet16 hiRegsDirty(RegCache.LoadedRegs & 0x7F00);
+            for (int reg : hiRegsDirty)
+                SaveReg(reg, RegCache.Mapping[reg]);
+        }
+    }
+}
+
+void Compiler::PopRegs(bool saveHiRegs)
+{
+    if (saveHiRegs)
+    {
+        BitSet16 hiRegsLoaded(RegCache.LoadedRegs & 0x7F00);
+
+        for (int reg : hiRegsLoaded)
+            LoadReg(reg, RegCache.Mapping[reg]);
+    }
+}
+
 Compiler::Compiler()
 {
 #ifdef __SWITCH__
@@ -371,7 +497,7 @@ const Compiler::CompileFunc A_Comp[ARMInstrInfo::ak_Count] =
     // Branch
     F(BranchImm), F(BranchImm), F(BranchImm), F(BranchXchangeReg), F(BranchXchangeReg),
     // Special
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    NULL, F(MSR), F(MSR), F(MRS), NULL, NULL, NULL,
     &Compiler::Nop
 };
 #undef F

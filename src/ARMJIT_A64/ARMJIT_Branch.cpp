@@ -279,28 +279,11 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
     }
     else
     {
-        BitSet16 hiRegsLoaded(RegCache.LoadedRegs & 0xFF00);
+        
         bool cpsrDirty = CPSRDirty;
         SaveCPSR();
         SaveCycles();
-
-        if (restoreCPSR)
-        {
-            if (Thumb || CurInstr.Cond() >= 0xE)
-            {
-                for (int reg : hiRegsLoaded)
-                {
-                    RegCache.UnloadRegister(reg);
-                }
-            }
-            else
-            {
-                // the ugly way...
-                // we only save them, to load and save them again
-                for (int reg : hiRegsLoaded)
-                    SaveReg(reg, RegCache.Mapping[reg]);
-            }
-        }
+        PushRegs(restoreCPSR);
 
         if (switchThumb)
             MOV(W1, addr);
@@ -318,14 +301,8 @@ void Compiler::Comp_JumpTo(Arm64Gen::ARM64Reg addr, bool switchThumb, bool resto
         else
             QuickCallFunction(X3, jumpToTrampoline<ARMv4>);
 
-        if (!Thumb && restoreCPSR && CurInstr.Cond() < 0xE)
-        {
-            for (int reg : hiRegsLoaded)
-                LoadReg(reg, RegCache.Mapping[reg]);
-        }
-
+        PopRegs(restoreCPSR);
         LoadCycles();
-
         LoadCPSR();
         if (CurInstr.Cond() < 0xE)
             CPSRDirty = cpsrDirty;

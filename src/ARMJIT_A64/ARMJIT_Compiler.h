@@ -74,6 +74,9 @@ public:
     Compiler();
     ~Compiler();
 
+    void PushRegs(bool saveHiRegs);
+    void PopRegs(bool saveHiRegs);
+
     Arm64Gen::ARM64Reg MapReg(int reg)
     {
         assert(RegCache.Mapping[reg] != Arm64Gen::INVALID_REG);
@@ -127,6 +130,8 @@ public:
     void A_Comp_BranchImm();
     void A_Comp_BranchXchangeReg();
 
+    void A_Comp_MRS();
+    void A_Comp_MSR();
 
     void T_Comp_ShiftImm();
     void T_Comp_AddSub_();
