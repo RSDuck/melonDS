@@ -1346,8 +1346,6 @@ int main(int argc, char* argv[])
             else if (keysDown & KEY_ZR)
                 touchDownKey ^= true;
 
-            touchDown |= touchDownKey;
-
             JoystickPosition rstick;
             hidJoystickRead(&rstick, CONTROLLER_P1_AUTO, JOYSTICK_RIGHT);
 
@@ -1355,12 +1353,10 @@ int main(int argc, char* argv[])
 
             if (Config::CursorMode < 2)
             {
-                if (rstick.dx * rstick.dx + rstick.dy * rstick.dy < JOYSTICK_MAX / 10)
+                if (rstick.dx * rstick.dx + rstick.dy * rstick.dy < (JOYSTICK_MAX / 10) * (JOYSTICK_MAX / 10))
                 {
                     cursorVelX = 0.f;
                     cursorVelY = 0.f;
-
-                    touchscreenInputSource = 0;
                 }
                 else
                 {
@@ -1475,9 +1471,12 @@ int main(int argc, char* argv[])
                     cursorX = rotatedTouch[0];
                     cursorY = rotatedTouch[1];
 
+                    touchDownKey = false;
                     touchDown = true;
                 }
             }
+
+            touchDown |= touchDownKey;
 
             if (touchDown)
             {
