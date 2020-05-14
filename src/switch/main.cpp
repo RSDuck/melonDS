@@ -320,7 +320,9 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
 void graphicsExit()
 {
     gQueue.waitIdle();
+    gQueue.destroy();
 
+    gCmdbuf.clear();
     gCmdbuf.destroy();
 
     gSwapchain.destroy();
@@ -328,8 +330,6 @@ void graphicsExit()
     textureBuffer.Destroy();
     codeBuffer.Destroy();
     dataBuffer.Destroy();
-
-    gQueue.destroy();
 
     gDevice.destroy();
 }
