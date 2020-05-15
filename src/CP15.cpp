@@ -97,10 +97,6 @@ void ARMv5::CP15DoSavestate(Savestate* file)
 
 void ARMv5::UpdateDTCMSetting()
 {
-#ifdef JIT_ENABLED
-    u32 oldDTCMBase = DTCMBase;
-    u32 oldDTCMSize = DTCMSize;
-#endif
     if (CP15Control & (1<<16))
     {
         DTCMBase = DTCMSetting & 0xFFFFF000;
@@ -113,20 +109,10 @@ void ARMv5::UpdateDTCMSetting()
         DTCMSize = 0;
         //printf("DTCM disabled\n");
     }
-#ifdef JIT_ENABLED
-    if (oldDTCMBase != DTCMBase || oldDTCMSize != DTCMSize)
-    {
-        ARMJIT::UpdateMemoryStatus9(oldDTCMBase, oldDTCMBase + oldDTCMSize);
-        ARMJIT::UpdateMemoryStatus9(DTCMBase, DTCMBase + DTCMSize);
-    }
-#endif
 }
 
 void ARMv5::UpdateITCMSetting()
 {
-#ifdef JIT_ENABLED
-    u32 oldITCMSize = ITCMSize;
-#endif
     if (CP15Control & (1<<18))
     {
         ITCMSize = 0x200 << ((ITCMSetting >> 1) & 0x1F);
@@ -137,10 +123,6 @@ void ARMv5::UpdateITCMSetting()
         ITCMSize = 0;
         //printf("ITCM disabled\n");
     }
-#ifdef JIT_ENABLED
-    if (oldITCMSize != ITCMSize)
-        ARMJIT::UpdateMemoryStatus9(0, std::max(oldITCMSize, ITCMSize));
-#endif
 }
 
 

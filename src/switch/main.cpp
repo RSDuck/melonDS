@@ -10,6 +10,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <dirent.h>
+#include <unistd.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -1076,12 +1077,12 @@ int main(int argc, char* argv[])
     setenv("NV50_PROG_OPTIMIZE", "0", 1);
     setenv("NV50_PROG_DEBUG", "1", 1);
     setenv("NV50_PROG_CHIPSET", "0x120", 1);*/
-#ifdef GDB_ENABLED
+//#ifdef GDB_ENABLED
     socketInitializeDefault();
     int nxlinkSocket = nxlinkStdio();
     //GDBStub_Init();
     //GDBStub_Breakpoint();
-#endif
+//#endif
 
     romfsInit();
 
@@ -1941,11 +1942,11 @@ int main(int argc, char* argv[])
     appletUnhook(&aptCookie);
     appletUnlockExit();
 
-#ifdef GDB_ENABLED
+//#ifdef GDB_ENABLED
     close(nxlinkSocket);
     socketExit();
     //GDBStub_Shutdown();
-#endif
+//#endif
     romfsExit();
 
     return 0;

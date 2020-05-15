@@ -66,7 +66,7 @@ struct Op2
     };
 };
 
-class Compiler : Arm64Gen::ARM64XEmitter
+class Compiler : public Arm64Gen::ARM64XEmitter
 {
 public:
     typedef void (Compiler::*CompileFunc)();
@@ -198,9 +198,6 @@ public:
 
     void Comp_BranchSpecialBehaviour(bool taken);
 
-    void SwitchToFarCode();
-    void SwitchToNearCode();
-
     JitBlockEntry AddEntryOffset(u32 offset)
     {
         return (JitBlockEntry)(GetRXBase() + offset);
@@ -210,13 +207,6 @@ public:
     {
         return (u8*)entry - GetRXBase();
     }
-
-    ptrdiff_t FarLastFlushStart;
-    ptrdiff_t FarCode, NearCode;
-
-    ptrdiff_t NearStart;
-    ptrdiff_t FarStart;
-    u32 NearSize, FarSize;
 
     bool Exit;
 
@@ -244,8 +234,6 @@ public:
     bool CPSRDirty = false;
 
     bool IrregularCycles = false;
-
-    TinyVector<std::tuple<Arm64Gen::FixupBranch, u8*>> VeneersLeft;
 
 #ifdef __SWITCH__
     void* JitRWBase;

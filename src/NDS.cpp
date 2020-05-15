@@ -1099,11 +1099,6 @@ void MapSharedWRAM(u8 val)
         SWRAM_ARM7.Mask = 0x7FFF;
         break;
     }
-
-#ifdef JIT_ENABLED
-    ARMJIT::UpdateMemoryStatus9(0x3000000, 0x3000000 + 0x1000000);
-    ARMJIT::UpdateMemoryStatus7(0x3000000, 0x3000000 + 0x1000000);
-#endif
 }
 
 

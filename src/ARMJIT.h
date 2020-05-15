@@ -79,9 +79,6 @@ void CompileBlock(ARM* cpu);
 
 void ResetBlockCache();
 
-void UpdateMemoryStatus9(u32 start, u32 end);
-void UpdateMemoryStatus7(u32 start, u32 end);
-
 }
 
 extern "C" void ARM_Dispatch(ARM* cpu, ARMJIT::JitBlockEntry entry);

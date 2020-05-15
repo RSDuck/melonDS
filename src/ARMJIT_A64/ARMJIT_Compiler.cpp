@@ -336,11 +336,6 @@ Compiler::Compiler()
 
     JitMemUseableSize -= GetCodeOffset();
     SetCodeBase((u8*)GetRWPtr(), (u8*)GetRXPtr());
-
-    NearStart = 0;
-    FarStart = NearStart + 12 * 1024 * 1024;
-    NearSize = FarStart - NearStart;
-    FarSize = JitMemUseableSize - FarStart;
 }
 
 Compiler::~Compiler()
@@ -583,26 +578,9 @@ void Compiler::Comp_BranchSpecialBehaviour(bool taken)
     }
 }
 
-void Compiler::SwitchToFarCode()
-{
-    NearCode = GetCodeOffset();
-    SetCodePtrUnsafe(FarCode);
-}
-
-void Compiler::SwitchToNearCode()
-{
-    FarCode = GetCodeOffset();
-    SetCodePtrUnsafe(NearCode);
-}
-
 JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount)
 {
-    if (FarSize - (FarCode - FarStart) < 1024 * 4)
-    {
-        printf("JIT far memory full, resetting...\n");
-        ResetBlockCache();
-    }
-    if (NearSize - (GetCodeOffset() - NearStart) < 1024 * 16)
+    if (JitMemSize - GetCodeOffset() < 1024 * 16)
     {
         printf("JIT near memory full, resetting...\n");
         ResetBlockCache();
@@ -757,16 +735,7 @@ JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, F
     }
     QuickTailCall(X0, ARM_Ret);
 
-    for (int i = 0; i < VeneersLeft.Length; i++)
-    {
-        SetJumpTarget(std::get<0>(VeneersLeft[i]));
-        B(std::get<1>(VeneersLeft[i]));
-    }
-    VeneersLeft.Clear();
-
     FlushIcache();
-    FlushIcacheSection(GetRXBase() + FarLastFlushStart, GetRXBase() + FarCode);
-    FarLastFlushStart = FarCode;
 
     return res;
 }
@@ -774,8 +743,6 @@ JitBlockEntry Compiler::CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, F
 void Compiler::Reset()
 {
     SetCodePtr(0);
-    NearCode = NearStart;
-    FarCode = FarStart;
 
     const u32 brk_0 = 0xD4200000;
 

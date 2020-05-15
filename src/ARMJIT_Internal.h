@@ -213,8 +213,6 @@ typedef void (*InterpreterFunc)(ARM* cpu);
 extern InterpreterFunc InterpretARM[];
 extern InterpreterFunc InterpretTHUMB[];
 
-extern u8 MemoryStatus9[0x800000];
-extern u8 MemoryStatus7[0x800000];
 
 extern TinyVector<u32> InvalidLiterals;
 

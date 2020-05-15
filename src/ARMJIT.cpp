@@ -119,8 +119,6 @@ std::unordered_map<u32, JitBlock*> JitBlocks7;
 // force them to be on page boundary
 // to they can be accessed with a single adrp instead of needing adrp + add
 // to save some code space
-u8 MemoryStatus9[0x800000] __attribute__((aligned (4096)));
-u8 MemoryStatus7[0x800000] __attribute__((aligned (4096)));
 
 int ClassifyAddress9(u32 addr)
 {
@@ -175,147 +173,6 @@ int ClassifyAddress7(u32 addr)
 		}
 	}
 	return memregion_Other;
-}
-
-void UpdateMemoryStatus9(u32 start, u32 end)
-{
-	start >>= 12;
-	end >>= 12;
-
-	if (end == 0xFFFFF)
-		end++;
-
-	for (u32 i = start; i < end; i++)
-	{
-		u32 addr = i << 12;
-
-		int region = ClassifyAddress9(addr);
-		u32 pseudoPhyisical = TranslateAddr9(addr);
-
-		for (u32 j = 0; j < 8; j++)
-		{
-			u8 val = region;
-			if (CodeRanges[(pseudoPhyisical + (j << 12)) / 512].Blocks.Length)
-				val |= 0x80;
-			MemoryStatus9[i * 8 + j] = val;
-		}
-	}
-}
-
-void UpdateMemoryStatus7(u32 start, u32 end)
-{
-	start >>= 12;
-	end >>= 12;
-
-	if (end == 0xFFFFF)
-		end++;
-
-	for (u32 i = start; i < end; i++)
-	{
-		u32 addr = i << 12;
-
-		int region = ClassifyAddress7(addr);
-		u32 pseudoPhyisical = TranslateAddr7(addr);
-
-		for (u32 j = 0; j < 8; j++)
-		{
-			u8 val = region;
-			if (CodeRanges[(pseudoPhyisical + (j << 12)) / 512].Blocks.Length)
-				val |= 0x80;
-			MemoryStatus7[i * 8 + j] = val;
-		}
-	}
-}
-
-void UpdateRegionByPseudoPhyiscal(u32 addr, bool invalidate)
-{
-	for (u32 i = 1; i < exeMem_Count; i++)
-	{
-		if (addr >= ExeMemRegionOffsets[i] && addr < ExeMemRegionOffsets[i] + ExeMemRegionSizes[i])
-		{
-			for (u32 num = 0; num < 2; num++)
-			{
-				u32 physSize = ExeMemRegionSizes[i];
-				u32 mapSize = 0;
-				u32 mapStart = 0;
-				switch (i)
-				{
-				case exeMem_ITCM:
-					if (num == 0)
-						mapStart = 0; mapSize = NDS::ARM9->ITCMSize;
-					break;
-				case exeMem_MainRAM: mapStart = 0x2000000; mapSize = 0x1000000; break;
-				case exeMem_SWRAM:
-					if (num == 0)
-					{
-						if (NDS::SWRAM_ARM9.Mem)
-							mapStart = 0x3000000, mapSize = 0x1000000;
-						else
-							mapStart = mapSize = 0;
-					}
-					else
-					{
-						if (NDS::SWRAM_ARM7.Mem)
-							mapStart = 0x3000000, mapSize = 0x800000;
-						else
-							mapStart = mapSize = 0;
-					}
-					break;
-				case exeMem_LCDC:
-					if (num == 0)
-						mapStart = 0x6800000, mapSize = 0xA4000;
-					break;
-				case exeMem_ARM9_BIOS:
-					if (num == 0)
-						mapStart = 0xFFFF0000, mapSize = 0x10000;
-					break;
-				case exeMem_ARM7_BIOS:
-					if (num == 1)
-						mapStart = 0; mapSize = 0x4000;
-					break;
-				case exeMem_ARM7_WRAM:
-					if (num == 1)
-					{
-						if (NDS::SWRAM_ARM7.Mem)
-							mapStart = 0x3800000, mapSize = 0x800000;
-						else
-							mapStart = 0x3000000, mapSize = 0x1000000;
-					}
-					break;
-				case exeMem_ARM7_WVRAM:
-					if (num == 1)
-						mapStart = 0x6000000, mapSize = 0x1000000;
-					break;
-				}
-
-				for (u32 j = 0; j < mapSize / physSize; j++)
-				{
-					u32 virtAddr = mapStart + physSize * j + (addr - ExeMemRegionOffsets[i]);
-					if (num == 0
-						&& virtAddr >= NDS::ARM9->DTCMBase && virtAddr < (NDS::ARM9->DTCMBase + NDS::ARM9->DTCMSize))
-						continue;
-					if (invalidate)
-					{
-						if (num == 0)
-							MemoryStatus9[virtAddr / 512] |= 0x80;
-						else
-							MemoryStatus7[virtAddr / 512] |= 0x80;
-					}
-					else
-					{
-						if (num == 0)
-							MemoryStatus9[virtAddr / 512] &= ~0x80;
-						else
-							MemoryStatus7[virtAddr / 512] &= ~0x80;
-					}
-				}
-				
-			}
-			return;
-		}
-	}
-
-	assert(false);
 }
 
 template <typename T>
@@ -415,14 +272,15 @@ template <bool PreInc, bool Write>
 void SlowBlockTransfer9(u32 addr, u64* data, u32 num, ARMv5* cpu)
 {
 	addr &= ~0x3;
+	if (PreInc)
+		addr += 4;
 	for (int i = 0; i < num; i++)
 	{
-		addr += PreInc * 4;
 		if (Write)
 			SlowWrite9<u32>(addr, cpu, data[i]);
 		else
 			data[i] = SlowRead9<u32>(addr, cpu);
-		addr += !PreInc * 4;
+		addr += 4;
 	}
 }
 
@@ -430,14 +288,15 @@ template <bool PreInc, bool Write>
 void SlowBlockTransfer7(u32 addr, u64* data, u32 num)
 {
 	addr &= ~0x3;
+	if (PreInc)
+		addr += 4;
 	for (int i = 0; i < num; i++)
 	{
-		addr += PreInc * 4;
 		if (Write)
 			SlowWrite7<u32>(addr, data[i]);
 		else
 			data[i] = SlowRead7<u32>(addr);
-		addr += !PreInc * 4;
+		addr += 4;
 	}
 }
 
@@ -564,9 +423,6 @@ void DeInit()
 void Reset()
 {
 	ResetBlockCache();
-
-	UpdateMemoryStatus9(0, 0xFFFFFFFF);
-	UpdateMemoryStatus7(0, 0xFFFFFFFF);
 }
 
 void FloodFillSetFlags(FetchedInstr instrs[], int start, u8 flags)
@@ -1113,8 +969,6 @@ void CompileBlock(ARM* cpu)
 		assert(addressMasks[j] != 0);
 		CodeRanges[addressRanges[j] / 512].Code |= addressMasks[j];
 		CodeRanges[addressRanges[j] / 512].Blocks.Add(block);
-
-		UpdateRegionByPseudoPhyiscal(addressRanges[j], true);
 	}
 
 	if (cpu->Num == 0)
@@ -1187,10 +1041,7 @@ void InvalidateByAddr(u32 pseudoPhysical)
 				assert(removed);
 
 				if (otherRange->Blocks.Length == 0)
-				{
 					otherRange->Code = 0;
-					UpdateRegionByPseudoPhyiscal(addr, false);
-				}
 			}
 		}
 
@@ -1220,9 +1071,6 @@ void InvalidateByAddr(u32 pseudoPhysical)
 			delete block;
 		}
 	}
-
-	if (range->Blocks.Length == 0)
-		UpdateRegionByPseudoPhyiscal(pseudoPhysical, false);
 }
 
 void InvalidateRegionIfNecessary(u32 pseudoPhyisical)
