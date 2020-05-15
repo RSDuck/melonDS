@@ -693,7 +693,7 @@ void GPU2DNeon::DrawScanlineBGMode6(u32 line)
                     DrawBG_3D();
             }
         }
-        if ((DispCnt & 0x1000) && NumSprites)
+        if ((DispCnt & 0x1000) && NumSprites[i])
             InterleaveSprites(0x40000 | (i<<16));
     }
 }
@@ -719,7 +719,7 @@ void GPU2DNeon::DrawScanlineBGMode7(u32 line)
                     DoDrawBG(Text, line, 0)
             }
         }
-        if ((DispCnt & 0x1000) && NumSprites)
+        if ((DispCnt & 0x1000) && NumSprites[i])
             InterleaveSprites(0x40000 | (i<<16));
     }
 }
@@ -856,7 +856,7 @@ void GPU2DNeon::DrawBG_3D()
                 c.val[0], 
                 c.val[1], 
                 vorrq_u8(c.val[2], vdupq_n_u8(1 << 7)), // add bitmap flag
-                vorrq_u8(c.val[3], vdupq_n_u8(0x40)));
+                vorrq_u8(c.val[3], vdupq_n_u8(0xE0)));
         }
     }
 }
