@@ -321,7 +321,7 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
     if (regsCount == 0)
         return 0; // actually not the right behaviour TODO: fix me
 
-    if (regsCount == 1 && !usermode)
+    if (regsCount == 1 && !usermode && RegCache.LoadedRegs & (1 << *regs.begin()))
     {
         int flags = 0;
         if (store)
