@@ -883,6 +883,7 @@ void UpdateClipMatrix()
 
 void AddCycles(s32 num)
 {
+    PROFILER_SECTION(add3dcycles)
     CycleCount += num;
 
     if (VertexPipeline > 0)
@@ -910,6 +911,8 @@ void AddCycles(s32 num)
             VertexSlotsFree = 0x1;
         }
     }
+
+    PROFILER_END_SECTION
 }
 
 void NextVertexSlot()
@@ -1127,6 +1130,8 @@ bool ClipCoordsEqual(Vertex* a, Vertex* b)
 
 void SubmitPolygon()
 {
+    PROFILER_SECTION(submitpolygon)
+
     Vertex clippedvertices[10];
     Vertex* reusedvertices[2];
     int clipstart = 0;
@@ -1180,6 +1185,7 @@ void SubmitPolygon()
         if (!(CurPolygonAttr & (1<<7)))
         {
             LastStripPolygon = NULL;
+            PROFILER_END_SECTION
             return;
         }
     }
@@ -1188,6 +1194,7 @@ void SubmitPolygon()
         if (!(CurPolygonAttr & (1<<6)))
         {
             LastStripPolygon = NULL;
+            PROFILER_END_SECTION
             return;
         }
     }
@@ -1241,10 +1248,6 @@ void SubmitPolygon()
 
     // detect lines, for the OpenGL renderer
 
-    PROFILER_END_SECTION
-
-    PROFILER_SECTION(clipping)
-
     int polytype = 0;
     if (nverts == 3)
     {
@@ -1276,6 +1279,7 @@ void SubmitPolygon()
     {
         LastStripPolygon = NULL;
         DispCnt |= (1<<13);
+        PROFILER_END_SECTION
         return;
     }
 
@@ -1364,6 +1368,7 @@ void SubmitPolygon()
         if (zerodot && allbehind)
         {
             LastStripPolygon = NULL;
+            PROFILER_END_SECTION
             return;
         }
     }
@@ -1533,6 +1538,7 @@ void SubmitPolygon()
         LastStripPolygon = poly;
     else
         LastStripPolygon = NULL;
+    PROFILER_END_SECTION
 }
 
 void SubmitVertex()
@@ -2519,7 +2525,7 @@ void ExecuteCommand()
             break;
 
         default:
-            PROFILER_COUNTER(unknowngxcommand)
+            //PROFILER_COUNTER(unknowngxcommand)
             //printf("!! UNKNOWN GX COMMAND %02X %08X\n", entry.Command, entry.Param);
             break;
         }
@@ -2713,6 +2719,7 @@ u32 WriteBatchToGXFIFO(u32* values, u32 count)
             return i;
     }
 
+    PROFILER_SECTION(writebatchtogxfifo)
     for (; i < count; i++)
     {
         CurCommand = values[i];
@@ -2728,7 +2735,10 @@ u32 WriteBatchToGXFIFO(u32* values, u32 count)
                 {
                     i++;
                     if (i == count)
+                    {
+                        PROFILER_END_SECTION
                         return i;
+                    }
 
                     CmdFIFOEntry entry;
                     entry.Command = CurCommand & 0xFF;
@@ -2752,8 +2762,12 @@ u32 WriteBatchToGXFIFO(u32* values, u32 count)
         NumCommands = 0;
 
         if (stall)
+        {
+            PROFILER_END_SECTION
             return i + 1;
+        }
     }
+    PROFILER_END_SECTION
 
     return i;
 }

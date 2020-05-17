@@ -883,12 +883,14 @@ u32 RunFrame()
         }
         else
         {
+            PROFILER_SECTION(arm9)
 #ifdef JIT_ENABLED
             if (EnableJIT)
                 ARM9->ExecuteJIT();
             else
 #endif
                 ARM9->Execute();
+            PROFILER_END_SECTION
         }
 
         RunTimers(0);
@@ -912,18 +914,22 @@ u32 RunFrame()
             }
             else
             {
+                PROFILER_SECTION(arm7)
 #ifdef JIT_ENABLED
                 if (EnableJIT)
                     ARM7->ExecuteJIT();
                 else
 #endif
                     ARM7->Execute();
+                PROFILER_END_SECTION
             }
 
             RunTimers(1);
         }
 
+        PROFILER_SECTION(runsystem)
         RunSystem(target);
+        PROFILER_END_SECTION
 
         if (CPUStop & 0x40000000)
         {
