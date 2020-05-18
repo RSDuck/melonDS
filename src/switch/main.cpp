@@ -100,7 +100,7 @@ struct StupidStackBuffer
         block.destroy();
     }
 
-    u32 Allocate(u32 size, u32 align = 0)
+    u32 Allocate(u32 size, u32 align = 1)
     {
         offset = (offset + align - 1) & ~(align - 1);
         size = (size + align - 1) & ~(align - 1);
@@ -198,13 +198,13 @@ void graphicsInitialize()
     gQueue = dk::QueueMaker{gDevice}.setFlags(DkQueueFlags_Graphics).create();
 
     textureBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_Image | DkMemBlockFlags_GpuCached, 16*1024*1024);
-    codeBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code, 128*1024);
-    dataBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 1024*1024);
+    codeBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code, 256*1024);
+    dataBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 2*1024*1024);
     tempBuffer = StupidStackBuffer(gDevice, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached, 1024*1024);
 
     gCmdbuf = dk::CmdBufMaker{gDevice}.create();
-    gCmdbufData[0] = allocData(0x10000, 0x10000);
-    gCmdbufData[1] = allocData(0x10000, 0x10000);
+    gCmdbufData[0] = allocData(0x10000*2, 0x10000);
+    gCmdbufData[1] = allocData(0x10000*2, 0x10000);
 
     dk::ImageLayout fbLayout;
     dk::ImageLayoutMaker{gDevice}

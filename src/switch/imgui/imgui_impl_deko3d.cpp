@@ -131,7 +131,7 @@ void ImGui_ImplDeko3D_CreateDeviceObjects(dk::Queue queue)
 
     for (int i = 0; i < 2; i++)
     {
-        g_VertexBuffers[i] = g_AllocData(sizeof(ImDrawVert) * 8192, alignof(ImDrawVert));
+        g_VertexBuffers[i] = g_AllocData(sizeof(ImDrawVert) * 1024 * 32, alignof(ImDrawVert));
     }
 
     {
@@ -215,11 +215,13 @@ void ImGui_ImplDeko3D_RenderDrawData(ImDrawData* drawData, dk::CmdBuf cmdbuf, Im
         const ImDrawList* cmd_list = drawData->CmdLists[n];
 
         uint32_t vtxBufferSize = cmd_list->VtxBuffer.Size * sizeof(ImDrawVert);
+        assert(vtxBufferOffset + vtxBufferSize < vtxBuffer.size);
         memcpy((uint8_t*)vtxBuffer.GetCpuAddr() + vtxBufferOffset, cmd_list->VtxBuffer.Data, vtxBufferSize);
         cmdbuf.bindVtxBuffer(0, vtxBuffer.GetGpuAddr() + vtxBufferOffset, vtxBufferSize);
         vtxBufferOffset += vtxBufferSize;
 
         uint32_t idxBufferSize = cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx);
+        assert(vtxBufferOffset + idxBufferSize < vtxBuffer.size);
         memcpy((uint8_t*)vtxBuffer.GetCpuAddr() + vtxBufferOffset, cmd_list->IdxBuffer.Data, idxBufferSize);
         cmdbuf.bindIdxBuffer(DkIdxFormat_Uint16, vtxBuffer.GetGpuAddr() + vtxBufferOffset);
         vtxBufferOffset += idxBufferSize;

@@ -23,7 +23,7 @@ add_executable(melonDS.elf ${SOURCES_SWITCH})
 if (${CMAKE_BUILD_TYPE} STREQUAL Release)
     target_link_libraries(melonDS.elf core deko3d nx)
 else()
-    target_link_libraries(melonDS.elf core deko3dd nx)
+    target_link_libraries(melonDS.elf core deko3dd nxd)
 endif()
 
 add_custom_command(OUTPUT control.nacp
