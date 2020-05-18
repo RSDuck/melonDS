@@ -1153,7 +1153,7 @@ void GPU2DNeon::DrawBG_Text(u32 line, u32 bgnum)
     u32 width = (bgcnt & 0x4000) ? 512 : 256;
     u32 height = (bgcnt & 0x8000) ? 512 : 256;
     u8* tilemapptr = GPU::GetBGCachePtr(Num, tilemapaddr, width * height * 2);
-    u8* tilesetptr = GPU::GetBGCachePtr(Num, tilesetaddr, 1024 * (bgcnt & 0x80 ? 16 : 32));
+    u8* tilesetptr = GPU::GetBGCachePtr(Num, tilesetaddr, 1024 * (bgcnt & 0x80 ? 32 : 16));
 
     // adjust Y position in tilemap
     if (bgcnt & 0x8000)

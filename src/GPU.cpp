@@ -1090,11 +1090,17 @@ void SetVCount(u16 val)
 #ifdef NEONGPU_ENABLED
 inline u8* GetCachePtr(u32 addr, u32 size, u8* flat, u32* status, u8** fastAccess, u128 (*slowAccess)(u32 addr), u32 num)
 {
+    addr &= (num * 0x4000) - 1;
+    if (size > num * 0x4000)
+        size = num * 0x4000;
+    if (addr + size > num * 0x4000)
+    {
+        GetCachePtr(0, addr + size - num * 0x4000, flat, status, fastAccess, slowAccess, num);
+        size = num - addr;
+    }
     u32 offset = addr & 0x3FFF;
     addr >>= 14;
     size = ((size + 0x3FFF) & ~0x3FFF) >> 14;
-    if (addr + size > num)
-        size = num - addr;
     u32 sizeMask = (u32)((((u64)1 << size) - 1) << addr);
     if ((*status & sizeMask) != sizeMask)
     {
