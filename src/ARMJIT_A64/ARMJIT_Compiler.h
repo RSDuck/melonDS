@@ -119,6 +119,7 @@ public:
 
     void A_Comp_Mul();
     void A_Comp_Mul_Long();
+    void A_Comp_Mul_Short();
 
     void A_Comp_Clz();
 

@@ -461,7 +461,7 @@ const Compiler::CompileFunc A_Comp[ARMInstrInfo::ak_Count] =
     // CMN
     F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp), F(ALUCmpOp),
     // Mul
-    F(Mul), F(Mul), F(Mul_Long), F(Mul_Long), F(Mul_Long), F(Mul_Long), NULL, NULL, NULL, NULL, NULL, 
+    F(Mul), F(Mul), F(Mul_Long), F(Mul_Long), F(Mul_Long), F(Mul_Long), F(Mul_Short), F(Mul_Short), F(Mul_Short), F(Mul_Short), F(Mul_Short), 
     // ARMv5 exclusives
     F(Clz), NULL, NULL, NULL, NULL, 
     

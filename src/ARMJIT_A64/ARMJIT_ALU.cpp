@@ -558,10 +558,7 @@ void Compiler::Comp_Mul_Mla(bool S, bool mla, ARM64Reg rd, ARM64Reg rm, ARM64Reg
     }
     else
     {
-        CLZ(W0, rs);
-        CLS(W1, rs);
-        CMP(W0, W1);
-        CSEL(W0, W0, W1, CC_GT);
+        CLS(W0, rs);
         Comp_AddCycles_CI(mla ? 1 : 0, W0, ArithOption(W0, ST_LSR, 3));
     }
 
@@ -594,10 +591,10 @@ void Compiler::A_Comp_Mul_Long()
     }
     else
     {
-        CLZ(W0, rs);
-        CLS(W1, rs);
-        CMP(W0, W1);
-        CSEL(W0, W0, W1, CC_GT);
+        if (sign)
+            CLS(W0, rs);
+        else
+            CLZ(W0, rs);
         Comp_AddCycles_CI(0, W0, ArithOption(W0, ST_LSR, 3));
     }
 
@@ -626,6 +623,78 @@ void Compiler::A_Comp_Mul_Long()
     
     if (S)
         Comp_RetriveFlags(false);
+}
+
+void Compiler::A_Comp_Mul_Short()
+{
+    if (Num == 0)
+        return;
+
+    ARM64Reg rd = MapReg(CurInstr.A_Reg(16));
+    ARM64Reg rm = MapReg(CurInstr.A_Reg(0));
+    ARM64Reg rs = MapReg(CurInstr.A_Reg(8));
+    u32 op = (CurInstr.Instr >> 21) & 0xF;
+
+    bool x = CurInstr.Instr & (1 << 5);
+    bool y = CurInstr.Instr & (1 << 6);
+
+    SBFM(W1, rs, y ? 8 : 0, 15);
+
+    if (op == 0b1000 || op == 0b1011)
+    {
+        // SMLAxy/SMULxy
+
+        SBFM(W0, rm, x ? 8 : 0, 15);
+
+        MUL(rd, W0, W1);
+
+        if (op == 0b1011)
+        {
+            ORRI2R(W0, RCPSR, 0x08000000);
+
+            ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
+            ADDS(rd, rd, rn);
+
+            CSEL(RCPSR, W0, RCPSR, CC_VS);
+
+            CPSRDirty = true;
+        }
+    }
+    else if (op == 0b1010)
+    {
+        // SMLALxy
+
+        ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
+
+        MOV(W2, rn);
+        BFI(X2, rd, 32, 32);
+
+        SBFM(W0, rm, x ? 8 : 0, 15);
+
+        SMADDL(EncodeRegTo64(rn), W0, W1, X2);
+
+        LSR(EncodeRegTo64(rd), EncodeRegTo64(rn), 32);
+    }
+    else if (op == 0b1001)
+    {
+        // SMLAWy/SMULWy
+        SMULL(X0, rm, W1);
+        LSR(EncodeRegTo64(rd), X0, 16);
+
+        if (!x)
+        {
+            ORRI2R(W0, RCPSR, 0x08000000);
+
+            ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
+            ADDS(rd, rd, rn);
+
+            CSEL(RCPSR, W0, RCPSR, CC_VS);
+
+            CPSRDirty = true;
+        }
+    }
+
+    Comp_AddCycles_C();
 }
 
 void Compiler::A_Comp_Mul()
