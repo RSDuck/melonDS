@@ -36,8 +36,6 @@
             * without alpha (same as in BlendCnt):
                 * bit 0-5: BG0-BG3, OBJ, backdrop
                 * bit 6-7: unused
-            * bit 0-4: 3D layer alpha
-            * bit 5-7: source (0-3=BG0-BG3, 4=OBJ, 5=backdrop, 6=semi transparent sprite, 7=3D layer)
 
     OBJLine format:
         * when palette index:
@@ -839,7 +837,7 @@ void GPU2DNeon::DrawBG_3D()
         if (!(WindowMask[i + 8] & 0x01)) continue;
 
         BGOBJLine[i + 8 + 272] = BGOBJLine[i + 8];
-        BGOBJLine[i + 8] = c | 0xE0800000;
+        BGOBJLine[i + 8] = c | 0x40800000;
     }
 
     for (; i < iend; i += 16)
@@ -855,8 +853,8 @@ void GPU2DNeon::DrawBG_3D()
             DrawPixels(&BGOBJLine[8 + i], moveMask, 
                 c.val[0], 
                 c.val[1], 
-                vorrq_u8(c.val[2], vdupq_n_u8(1 << 7)), // add bitmap flag
-                vorrq_u8(c.val[3], vdupq_n_u8(0xE0)));
+                vorrq_u8(c.val[2], vdupq_n_u8(0x80)), // add bitmap flag
+                vorrq_u8(c.val[3], vdupq_n_u8(0x40)));
         }
     }
 }
