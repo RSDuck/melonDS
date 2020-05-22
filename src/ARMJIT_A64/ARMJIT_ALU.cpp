@@ -501,7 +501,23 @@ void Compiler::A_Comp_ALUMovOp()
             MOVI2R(rd, op2.Imm);
         }
         else
-            MOV(rd, op2.Reg.Rm, op2.ToArithOption());
+        {
+            // ORR with shifted operand has cycles latency
+            if (op2.Reg.ShiftAmount > 0)
+            {
+                switch (op2.Reg.ShiftType)
+                {
+                case ST_LSL: LSL(rd, op2.Reg.Rm, op2.Reg.ShiftAmount); break;
+                case ST_LSR: LSR(rd, op2.Reg.Rm, op2.Reg.ShiftAmount); break;
+                case ST_ASR: ASR(rd, op2.Reg.Rm, op2.Reg.ShiftAmount); break;
+                case ST_ROR: ROR_(rd, op2.Reg.Rm, op2.Reg.ShiftAmount); break;
+                }
+            }
+            else
+            {
+                MOV(rd, op2.Reg.Rm, op2.ToArithOption());
+            }
+        }
     }
 
     if (S)
@@ -627,9 +643,6 @@ void Compiler::A_Comp_Mul_Long()
 
 void Compiler::A_Comp_Mul_Short()
 {
-    if (Num == 0)
-        return;
-
     ARM64Reg rd = MapReg(CurInstr.A_Reg(16));
     ARM64Reg rm = MapReg(CurInstr.A_Reg(0));
     ARM64Reg rs = MapReg(CurInstr.A_Reg(8));
@@ -638,17 +651,17 @@ void Compiler::A_Comp_Mul_Short()
     bool x = CurInstr.Instr & (1 << 5);
     bool y = CurInstr.Instr & (1 << 6);
 
-    SBFM(W1, rs, y ? 8 : 0, 15);
+    SBFX(W1, rs, y ? 16 : 0, 16);
 
     if (op == 0b1000 || op == 0b1011)
     {
         // SMLAxy/SMULxy
 
-        SBFM(W0, rm, x ? 8 : 0, 15);
+        SBFX(W0, rm, x ? 16 : 0, 16);
 
         MUL(rd, W0, W1);
 
-        if (op == 0b1011)
+        if (op == 0b1000)
         {
             ORRI2R(W0, RCPSR, 0x08000000);
 
@@ -659,6 +672,8 @@ void Compiler::A_Comp_Mul_Short()
 
             CPSRDirty = true;
         }
+
+        Comp_AddCycles_C();
     }
     else if (op == 0b1010)
     {
@@ -669,17 +684,19 @@ void Compiler::A_Comp_Mul_Short()
         MOV(W2, rn);
         BFI(X2, rd, 32, 32);
 
-        SBFM(W0, rm, x ? 8 : 0, 15);
+        SBFX(W0, rm, x ? 16 : 0, 16);
 
         SMADDL(EncodeRegTo64(rn), W0, W1, X2);
 
-        LSR(EncodeRegTo64(rd), EncodeRegTo64(rn), 32);
+        UBFX(EncodeRegTo64(rd), EncodeRegTo64(rn), 32, 32);
+
+        Comp_AddCycles_CI(1);
     }
     else if (op == 0b1001)
     {
         // SMLAWy/SMULWy
         SMULL(X0, rm, W1);
-        LSR(EncodeRegTo64(rd), X0, 16);
+        ASR(EncodeRegTo64(rd), X0, 16);
 
         if (!x)
         {
@@ -692,9 +709,9 @@ void Compiler::A_Comp_Mul_Short()
 
             CPSRDirty = true;
         }
-    }
 
-    Comp_AddCycles_C();
+        Comp_AddCycles_C();
+    }
 }
 
 void Compiler::A_Comp_Mul()

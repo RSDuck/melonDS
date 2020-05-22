@@ -765,6 +765,7 @@ public:
   void UXTH(ARM64Reg Rd, ARM64Reg Rn);
 
   void UBFX(ARM64Reg Rd, ARM64Reg Rn, int lsb, int width) { UBFM(Rd, Rn, lsb, lsb + width - 1); }
+  void SBFX(ARM64Reg Rd, ARM64Reg Rn, int lsb, int width) { SBFM(Rd, Rn, lsb, lsb + width - 1); }
   // Load Register (Literal)
   void LDR(ARM64Reg Rt, u32 imm);
   void LDRSW(ARM64Reg Rt, u32 imm);

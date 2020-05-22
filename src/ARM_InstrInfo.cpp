@@ -401,10 +401,16 @@ Info Decode(bool thumb, u32 num, u32 instr)
         else if ((instr >> 28) == 0xF)
             data = ak(ak_Nop);
 
-        if (data & A_UnkOnARM7 && num != 0)
+        if (data & A_UnkOnARM7 && num == 1)
             data = A_UNK;
 
         res.Kind = (data >> 22) & 0x1FF;
+
+        if (res.Kind >= ak_SMLALxy && res.Kind <= ak_SMULxy && num == 1)
+        {
+            data = ak(ak_Nop);
+            res.Kind = ak_Nop;
+        }
 
         if (res.Kind == ak_MCR)
         {
