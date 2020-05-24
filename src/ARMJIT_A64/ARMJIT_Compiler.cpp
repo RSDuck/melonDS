@@ -29,7 +29,10 @@ namespace ARMJIT
     like x64. At one hand you can translate a lot of instructions directly.
     But at the same time, there are a ton of exceptions, like for
     example ADD and SUB can't have a RORed second operand on ARMv8.
- */
+ 
+    While writing a JIT when an instruction is recompiled into multiple ones
+    not to write back until you've read all the other operands!
+*/
 
 template <>
 const ARM64Reg RegisterCache<Compiler, ARM64Reg>::NativeRegAllocOrder[] =

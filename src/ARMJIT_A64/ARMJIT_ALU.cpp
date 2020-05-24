@@ -653,25 +653,32 @@ void Compiler::A_Comp_Mul_Short()
 
     SBFX(W1, rs, y ? 16 : 0, 16);
 
-    if (op == 0b1000 || op == 0b1011)
+    if (op == 0b1000)
     {
-        // SMLAxy/SMULxy
+        // SMLAxy
+
+        SBFX(W0, rm, x ? 16 : 0, 16);
+
+        MUL(W0, W0, W1);
+
+        ORRI2R(W1, RCPSR, 0x08000000);
+
+        ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
+        ADDS(rd, W0, rn);
+
+        CSEL(RCPSR, W1, RCPSR, CC_VS);
+
+        CPSRDirty = true;
+
+        Comp_AddCycles_C();
+    }
+    else if (op == 0b1011)
+    {
+        // SMULxy
 
         SBFX(W0, rm, x ? 16 : 0, 16);
 
         MUL(rd, W0, W1);
-
-        if (op == 0b1000)
-        {
-            ORRI2R(W0, RCPSR, 0x08000000);
-
-            ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
-            ADDS(rd, rd, rn);
-
-            CSEL(RCPSR, W0, RCPSR, CC_VS);
-
-            CPSRDirty = true;
-        }
 
         Comp_AddCycles_C();
     }
@@ -696,16 +703,16 @@ void Compiler::A_Comp_Mul_Short()
     {
         // SMLAWy/SMULWy
         SMULL(X0, rm, W1);
-        ASR(EncodeRegTo64(rd), X0, 16);
+        ASR(x ? EncodeRegTo64(rd) : X0, X0, 16);
 
         if (!x)
         {
-            ORRI2R(W0, RCPSR, 0x08000000);
+            ORRI2R(W1, RCPSR, 0x08000000);
 
             ARM64Reg rn = MapReg(CurInstr.A_Reg(12));
-            ADDS(rd, rd, rn);
+            ADDS(rd, W0, rn);
 
-            CSEL(RCPSR, W0, RCPSR, CC_VS);
+            CSEL(RCPSR, W1, RCPSR, CC_VS);
 
             CPSRDirty = true;
         }

@@ -406,7 +406,7 @@ Info Decode(bool thumb, u32 num, u32 instr)
 
         res.Kind = (data >> 22) & 0x1FF;
 
-        if (res.Kind >= ak_SMLALxy && res.Kind <= ak_SMULxy && num == 1)
+        if (res.Kind >= ak_SMLAxy && res.Kind <= ak_SMULxy && num == 1)
         {
             data = ak(ak_Nop);
             res.Kind = ak_Nop;
