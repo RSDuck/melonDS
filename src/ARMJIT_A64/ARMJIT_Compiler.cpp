@@ -335,6 +335,34 @@ Compiler::Compiler()
         QuickTailCall(X0, ARM_Ret);
     }
 
+    PatchedStoreFuncs[0][0] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowWrite9<u8>);
+    PatchedStoreFuncs[0][1] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowWrite9<u16>);
+    PatchedStoreFuncs[0][2] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowWrite9<u32>);
+
+    PatchedStoreFuncs[1][0] = (void*)SlowWrite7<u8>;
+    PatchedStoreFuncs[1][1] = (void*)SlowWrite7<u16>;
+    PatchedStoreFuncs[1][2] = (void*)SlowWrite7<u32>;
+
+    PatchedLoadFuncs[0][0] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowRead9<u8>);
+    PatchedLoadFuncs[0][1] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowRead9<u16>);
+    PatchedLoadFuncs[0][2] = GetRXPtr();
+    MOV(X1, RCPU);
+    B((void*)SlowRead9<u32>);
+
+    PatchedLoadFuncs[1][0] = (void*)SlowRead7<u8>;
+    PatchedLoadFuncs[1][1] = (void*)SlowRead7<u16>;
+    PatchedLoadFuncs[1][2] = (void*)SlowRead7<u32>;
+
     //FlushIcache();
 
     JitMemUseableSize -= GetCodeOffset();

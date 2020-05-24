@@ -55,6 +55,7 @@ if (ENABLE_JIT)
 
 	target_sources(core PRIVATE
 		ARMJIT.cpp
+		ARMJIT_Memory.cpp
 		ARM_InstrInfo.cpp
 
 		dolphin/CommonFuncs.cpp

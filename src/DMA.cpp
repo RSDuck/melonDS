@@ -274,7 +274,7 @@ void DMA::Run9()
             count = std::min<u32>(count, 1);
             count = std::max<u32>(count, IterCount);
 
-            u32 written = GPU3D::WriteBatchToGXFIFO((u32*)&NDS::MainRAM[CurSrcAddr & (MAIN_RAM_SIZE - 1)], count);
+            u32 written = GPU3D::WriteBatchToGXFIFO((u32*)&NDS::MainRAM[CurSrcAddr & (NDS::MainRAMSize - 1)], count);
 
             NDS::ARM9Timestamp += (unitcycles << NDS::ARM9ClockShift) * written;
             IterCount -= written;

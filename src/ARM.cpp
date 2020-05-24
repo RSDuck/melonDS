@@ -79,12 +79,21 @@ ARM::~ARM()
 
 ARMv5::ARMv5() : ARM(0)
 {
-    //
+#ifndef JIT_ENABLED
+    DTCM = new u8[DTCMSize];
+#endif
 }
 
 ARMv4::ARMv4() : ARM(1)
 {
     //
+}
+
+ARMv5::~ARMv5()
+{
+#ifndef JIT_ENABLED
+    delete[] DTCM;
+#endif
 }
 
 void ARM::Reset()

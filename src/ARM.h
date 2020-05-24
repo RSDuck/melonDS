@@ -32,11 +32,14 @@ enum
     RWFlags_ForceUser = (1<<21),
 };
 
+const u32 ITCMPhysicalSize = 0x8000;
+const u32 DTCMPhysicalSize = 0x4000;
+
 class ARM
 {
 public:
     ARM(u32 num);
-    ~ARM(); // destroy shit
+    virtual ~ARM(); // destroy shit
 
     virtual void Reset();
 
@@ -150,6 +153,7 @@ class ARMv5 : public ARM
 {
 public:
     ARMv5();
+    ~ARMv5();
 
     void Reset();
 
@@ -252,8 +256,8 @@ public:
     u32 DTCMBase, DTCMSize;
     s32 RegionCodeCycles;
 
-    u8 ITCM[0x8000];
-    u8 DTCM[0x4000];
+    u8 ITCM[ITCMPhysicalSize];
+    u8* DTCM;
 
     u8 ICache[0x2000];
     u32 ICacheTags[64*4];

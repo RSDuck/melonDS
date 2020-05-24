@@ -47,7 +47,7 @@ void InvalidateRegionIfNecessary(u32 addr);
 
 inline void InvalidateMainRAMIfNecessary(u32 addr)
 {
-	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (MAIN_RAM_SIZE - 1)));
+	InvalidateRegionIfNecessary(ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (NDS::MainRAMSize - 1)));
 }
 inline void InvalidateITCMIfNecessary(u32 addr)
 {

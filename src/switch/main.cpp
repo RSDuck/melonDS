@@ -1719,7 +1719,7 @@ int main(int argc, char* argv[])
                 if (enableBranchInlining)
                     ImGui::Checkbox("Branch linking", &enableBranchLinking);
 
-                if (enableBranchLinking)
+                if (enableBranchLinking && enableBranchInlining)
                     Config::JIT_BrancheOptimisations = 2;
                 else if (enableBranchInlining)
                     Config::JIT_BrancheOptimisations = 1;

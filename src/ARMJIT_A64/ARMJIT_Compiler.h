@@ -209,6 +209,9 @@ public:
         return (u8*)entry - GetRXBase();
     }
 
+    bool IsJITFault(u64 pc);
+    void RewriteMemAccess(u64 pc);
+
     bool Exit;
 
     FetchedInstr CurInstr;
@@ -229,6 +232,9 @@ public:
 
     void* JumpToFuncs9[3];
     void* JumpToFuncs7[3];
+
+    void* PatchedLoadFuncs[2][3];
+    void* PatchedStoreFuncs[2][3];
 
     RegisterCache<Compiler, Arm64Gen::ARM64Reg> RegCache;
 

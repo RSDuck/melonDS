@@ -93,16 +93,16 @@ u32 CPUStop;
 u8 ARM9BIOS[0x1000];
 u8 ARM7BIOS[0x4000];
 
-u8 MainRAM[MAIN_RAM_SIZE];
+u8* MainRAM;
 
-u8 SharedWRAM[0x8000];
+u8* SharedWRAM;
 u8 WRAMCnt;
 
 // putting them together so they're always next to each other
 MemRegion SWRAM_ARM9;
 MemRegion SWRAM_ARM7;
 
-u8 ARM7WRAM[0x10000];
+u8* ARM7WRAM;
 
 u16 ExMemCnt[2];
 
@@ -168,6 +168,10 @@ bool Init()
 
 #ifdef JIT_ENABLED
     ARMJIT::Init();
+#else
+    MainRAM = new u8[MainRAMSize];
+    ARM7WRAM = new u8[ARM7WRAMSize];
+    SharedWRAM = new u8[SharedWRAMSize];
 #endif
 
     DMAs[0] = new DMA(0, 0);
@@ -473,7 +477,7 @@ void Reset()
 
     InitTimings();
 
-    memset(MainRAM, 0, MAIN_RAM_SIZE);
+    memset(MainRAM, 0, MainRAMSize);
     memset(SharedWRAM, 0, 0x8000);
     memset(ARM7WRAM, 0, 0x10000);
 
@@ -659,7 +663,7 @@ bool DoSavestate(Savestate* file)
 
     file->VarArray(MainRAM, 0x400000);
     file->VarArray(SharedWRAM, 0x8000);
-    file->VarArray(ARM7WRAM, 0x10000);
+    file->VarArray(ARM7WRAM, ARM7WRAMSize);
 
     file->VarArray(ExMemCnt, 2*sizeof(u16));
     file->VarArray(ROMSeed0, 2*8);
@@ -1698,7 +1702,7 @@ u8 ARM9Read8(u32 addr)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
-        return *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u8*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM9.Mem)
@@ -1763,7 +1767,7 @@ u16 ARM9Read16(u32 addr)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
-        return *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u16*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM9.Mem)
@@ -1828,7 +1832,7 @@ u32 ARM9Read32(u32 addr)
     switch (addr & 0xFF000000)
     {
     case 0x02000000:
-        return *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u32*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM9.Mem)
@@ -1891,7 +1895,7 @@ void ARM9Write8(u32 addr, u8 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u8*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return;
 
     case 0x03000000:
@@ -1947,7 +1951,7 @@ void ARM9Write16(u32 addr, u16 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u16*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return;
 
     case 0x03000000:
@@ -2024,7 +2028,7 @@ void ARM9Write32(u32 addr, u32 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u32*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return ;
 
     case 0x03000000:
@@ -2100,7 +2104,7 @@ bool ARM9GetMemRegion(u32 addr, bool write, MemRegion* region)
     {
     case 0x02000000:
         region->Mem = MainRAM;
-        region->Mask = MAIN_RAM_SIZE-1;
+        region->Mask = MainRAMSize-1;
         return true;
 
     case 0x03000000:
@@ -2142,7 +2146,7 @@ u8 ARM7Read8(u32 addr)
     {
     case 0x02000000:
     case 0x02800000:
-        return *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u8*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM7.Mem)
@@ -2151,11 +2155,11 @@ u8 ARM7Read8(u32 addr)
         }
         else
         {
-            return *(u8*)&ARM7WRAM[addr & 0xFFFF];
+            return *(u8*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
         }
 
     case 0x03800000:
-        return *(u8*)&ARM7WRAM[addr & 0xFFFF];
+        return *(u8*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
 
     case 0x04000000:
         return ARM7IORead8(addr);
@@ -2202,7 +2206,7 @@ u16 ARM7Read16(u32 addr)
     {
     case 0x02000000:
     case 0x02800000:
-        return *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u16*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM7.Mem)
@@ -2211,11 +2215,11 @@ u16 ARM7Read16(u32 addr)
         }
         else
         {
-            return *(u16*)&ARM7WRAM[addr & 0xFFFF];
+            return *(u16*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
         }
 
     case 0x03800000:
-        return *(u16*)&ARM7WRAM[addr & 0xFFFF];
+        return *(u16*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
 
     case 0x04000000:
         return ARM7IORead16(addr);
@@ -2269,7 +2273,7 @@ u32 ARM7Read32(u32 addr)
     {
     case 0x02000000:
     case 0x02800000:
-        return *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)];
+        return *(u32*)&MainRAM[addr & (MainRAMSize - 1)];
 
     case 0x03000000:
         if (SWRAM_ARM7.Mem)
@@ -2278,11 +2282,11 @@ u32 ARM7Read32(u32 addr)
         }
         else
         {
-            return *(u32*)&ARM7WRAM[addr & 0xFFFF];
+            return *(u32*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
         }
 
     case 0x03800000:
-        return *(u32*)&ARM7WRAM[addr & 0xFFFF];
+        return *(u32*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)];
 
     case 0x04000000:
         return ARM7IORead32(addr);
@@ -2329,7 +2333,7 @@ void ARM7Write8(u32 addr, u8 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u8*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u8*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return;
 
     case 0x03000000:
@@ -2346,7 +2350,7 @@ void ARM7Write8(u32 addr, u8 val)
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-            *(u8*)&ARM7WRAM[addr & 0xFFFF] = val;
+            *(u8*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
             return;
         }
 
@@ -2354,7 +2358,7 @@ void ARM7Write8(u32 addr, u8 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-        *(u8*)&ARM7WRAM[addr & 0xFFFF] = val;
+        *(u8*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
         return;
 
     case 0x04000000:
@@ -2403,7 +2407,7 @@ void ARM7Write16(u32 addr, u16 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u16*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u16*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return;
 
     case 0x03000000:
@@ -2420,7 +2424,7 @@ void ARM7Write16(u32 addr, u16 val)
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-            *(u16*)&ARM7WRAM[addr & 0xFFFF] = val;
+            *(u16*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
             return;
         }
 
@@ -2428,7 +2432,7 @@ void ARM7Write16(u32 addr, u16 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-        *(u16*)&ARM7WRAM[addr & 0xFFFF] = val;
+        *(u16*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
         return;
 
     case 0x04000000:
@@ -2487,7 +2491,7 @@ void ARM7Write32(u32 addr, u32 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateMainRAMIfNecessary(addr);
 #endif
-        *(u32*)&MainRAM[addr & (MAIN_RAM_SIZE - 1)] = val;
+        *(u32*)&MainRAM[addr & (MainRAMSize - 1)] = val;
         return;
 
     case 0x03000000:
@@ -2504,7 +2508,7 @@ void ARM7Write32(u32 addr, u32 val)
 #ifdef JIT_ENABLED
             ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-            *(u32*)&ARM7WRAM[addr & 0xFFFF] = val;
+            *(u32*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
             return;
         }
 
@@ -2512,7 +2516,7 @@ void ARM7Write32(u32 addr, u32 val)
 #ifdef JIT_ENABLED
         ARMJIT::InvalidateARM7WRAMIfNecessary(addr);
 #endif
-        *(u32*)&ARM7WRAM[addr & 0xFFFF] = val;
+        *(u32*)&ARM7WRAM[addr & (ARM7WRAMSize - 1)] = val;
         return;
 
     case 0x04000000:
@@ -2571,7 +2575,7 @@ bool ARM7GetMemRegion(u32 addr, bool write, MemRegion* region)
     case 0x02000000:
     case 0x02800000:
         region->Mem = MainRAM;
-        region->Mask = MAIN_RAM_SIZE-1;
+        region->Mask = MainRAMSize-1;
         return true;
 
     case 0x03000000:
@@ -2583,14 +2587,14 @@ bool ARM7GetMemRegion(u32 addr, bool write, MemRegion* region)
         if (!SWRAM_ARM7.Mem)
         {
             region->Mem = ARM7WRAM;
-            region->Mask = 0xFFFF;
+            region->Mask = ARM7WRAMSize-1;
             return true;
         }
         break;
 
     case 0x03800000:
         region->Mem = ARM7WRAM;
-        region->Mask = 0xFFFF;
+        region->Mask = ARM7WRAMSize-1;
         return true;
     }
 

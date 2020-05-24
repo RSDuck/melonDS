@@ -10,13 +10,8 @@
 #include "Config.h"
 
 #include "ARMJIT_Internal.h"
-#if defined(__x86_64__)
-#include "ARMJIT_x64/ARMJIT_Compiler.h"
-#elif defined(__aarch64__)
-#include "ARMJIT_A64/ARMJIT_Compiler.h"
-#else
-#error "The current target platform doesn't have a JIT backend"
-#endif
+#include "ARMJIT_Memory.h"
+#include "ARMJIT_Compiler.h"
 
 #include "ARMInterpreter_ALU.h"
 #include "ARMInterpreter_LoadStore.h"
@@ -77,34 +72,34 @@ const u32 ExeMemRegionOffsets[] =
 
 u32 TranslateAddr9(u32 addr)
 {
-	switch (ClassifyAddress9(addr))
+	switch (ARMJIT_Memory::ClassifyAddress9(addr))
 	{
-	case memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (MAIN_RAM_SIZE - 1));
-	case memregion_SWRAM9:
+	case ARMJIT_Memory::memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (NDS::MainRAMSize - 1));
+	case ARMJIT_Memory::memregion_SWRAM9:
 		if (NDS::SWRAM_ARM9.Mem)
 			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM9.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM9.Mask);
 		else
 			return 0;
-	case memregion_ITCM: return ExeMemRegionOffsets[exeMem_ITCM] + (addr & 0x7FFF);
-	case memregion_VRAM: return (addr >= 0x6800000 && addr < 0x68A4000) ? ExeMemRegionOffsets[exeMem_LCDC] + (addr - 0x6800000) : 0;
-	case memregion_BIOS9: return ExeMemRegionOffsets[exeMem_ARM9_BIOS] + (addr & 0xFFF);
+	case ARMJIT_Memory::memregion_ITCM: return ExeMemRegionOffsets[exeMem_ITCM] + (addr & 0x7FFF);
+	case ARMJIT_Memory::memregion_VRAM: return (addr >= 0x6800000 && addr < 0x68A4000) ? ExeMemRegionOffsets[exeMem_LCDC] + (addr - 0x6800000) : 0;
+	case ARMJIT_Memory::memregion_BIOS9: return ExeMemRegionOffsets[exeMem_ARM9_BIOS] + (addr & 0xFFF);
 	default: return 0;
 	}
 }
 
 u32 TranslateAddr7(u32 addr)
 {
-	switch (ClassifyAddress7(addr))
+	switch (ARMJIT_Memory::ClassifyAddress7(addr))
 	{
-	case memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (MAIN_RAM_SIZE - 1));
-	case memregion_SWRAM7:
+	case ARMJIT_Memory::memregion_MainRAM: return ExeMemRegionOffsets[exeMem_MainRAM] + (addr & (NDS::MainRAMSize - 1));
+	case ARMJIT_Memory::memregion_SWRAM7:
 		if (NDS::SWRAM_ARM7.Mem)
 			return ExeMemRegionOffsets[exeMem_SWRAM] + (NDS::SWRAM_ARM7.Mem - NDS::SharedWRAM) + (addr & NDS::SWRAM_ARM7.Mask);
 		else
 			return 0;
-	case memregion_BIOS7: return ExeMemRegionOffsets[exeMem_ARM7_BIOS] + addr;
-	case memregion_WRAM7: return ExeMemRegionOffsets[exeMem_ARM7_WRAM] + (addr & 0xFFFF);
-	case memregion_VWRAM: return ExeMemRegionOffsets[exeMem_ARM7_WVRAM] + (addr & 0x1FFFF);
+	case ARMJIT_Memory::memregion_BIOS7: return ExeMemRegionOffsets[exeMem_ARM7_BIOS] + addr;
+	case ARMJIT_Memory::memregion_WRAM7: return ExeMemRegionOffsets[exeMem_ARM7_WRAM] + (addr & 0xFFFF);
+	case ARMJIT_Memory::memregion_VWRAM: return ExeMemRegionOffsets[exeMem_ARM7_WVRAM] + (addr & 0x1FFFF);
 	default: return 0;
 	}
 }
@@ -115,65 +110,6 @@ TinyVector<u32> InvalidLiterals;
 
 std::unordered_map<u32, JitBlock*> JitBlocks9;
 std::unordered_map<u32, JitBlock*> JitBlocks7;
-
-// force them to be on page boundary
-// to they can be accessed with a single adrp instead of needing adrp + add
-// to save some code space
-
-int ClassifyAddress9(u32 addr)
-{
-	if (addr < NDS::ARM9->ITCMSize)
-		return memregion_ITCM;
-	else if (addr >= NDS::ARM9->DTCMBase && addr < (NDS::ARM9->DTCMBase + NDS::ARM9->DTCMSize))
-		return memregion_DTCM;
-	else if ((addr & 0xFFFFF000) == 0xFFFF0000)
-		return memregion_BIOS9;
-	else
-	{
-		switch (addr & 0xFF000000)
-		{
-		case 0x02000000:
-			return memregion_MainRAM;
-		case 0x03000000:
-			return memregion_SWRAM9;
-		case 0x04000000:
-			return memregion_IO9;
-		case 0x06000000:
-			return memregion_VRAM;
-		}
-	}
-	return memregion_Other;
-}
-
-int ClassifyAddress7(u32 addr)
-{
-	if (addr < 0x00004000)
-		return memregion_BIOS7;
-	else
-	{
-		switch (addr & 0xFF800000)
-		{
-		case 0x02000000:
-		case 0x02800000:
-			return memregion_MainRAM;
-		case 0x03000000:
-			if (NDS::SWRAM_ARM7.Mem)
-				return memregion_SWRAM7;
-			else
-				return memregion_WRAM7;
-		case 0x03800000:
-			return memregion_WRAM7;
-		case 0x04000000:
-			return memregion_IO7;
-		case 0x04800000:
-			return memregion_Wifi;
-		case 0x06000000:
-		case 0x06800000:
-			return memregion_VWRAM;
-		}
-	}
-	return memregion_Other;
-}
 
 template <typename T>
 T SlowRead9(u32 addr, ARMv5* cpu)
@@ -413,16 +349,22 @@ UnreliableHashTable<u32, u32, 0x800, UINT32_MAX> FastBlockLookUp7;
 void Init()
 {
 	JITCompiler = new Compiler();
+
+	ARMJIT_Memory::Init();
 }
 
 void DeInit()
 {
+	ARMJIT_Memory::DeInit();
+
 	delete JITCompiler;
 }
 
 void Reset()
 {
 	ResetBlockCache();
+
+	ARMJIT_Memory::Reset();
 }
 
 void FloodFillSetFlags(FetchedInstr instrs[], int start, u8 flags)
@@ -1169,149 +1111,5 @@ void LinkBlock(ARM* cpu, u32 codeOffset)
 
 template void LinkBlock<0>(ARM*, u32);
 template void LinkBlock<1>(ARM*, u32);
-
-void WifiWrite32(u32 addr, u32 val)
-{
-	Wifi::Write(addr, val & 0xFFFF);
-	Wifi::Write(addr + 2, val >> 16);
-}
-
-u32 WifiRead32(u32 addr)
-{
-	return Wifi::Read(addr) | (Wifi::Read(addr + 2) << 16);
-}
-
-template <typename T>
-void VRAMWrite(u32 addr, T val)
-{
-	switch (addr & 0x00E00000)
-	{
-	case 0x00000000: GPU::WriteVRAM_ABG<T>(addr, val); return;
-	case 0x00200000: GPU::WriteVRAM_BBG<T>(addr, val); return;
-	case 0x00400000: GPU::WriteVRAM_AOBJ<T>(addr, val); return;
-	case 0x00600000: GPU::WriteVRAM_BOBJ<T>(addr, val); return;
-	default: GPU::WriteVRAM_LCDC<T>(addr, val); return;
-	}
-}
-template <typename T>
-T VRAMRead(u32 addr)
-{
-	switch (addr & 0x00E00000)
-	{
-	case 0x00000000: return GPU::ReadVRAM_ABG<T>(addr);
-	case 0x00200000: return GPU::ReadVRAM_BBG<T>(addr);
-	case 0x00400000: return GPU::ReadVRAM_AOBJ<T>(addr);
-	case 0x00600000: return GPU::ReadVRAM_BOBJ<T>(addr);
-	default: return GPU::ReadVRAM_LCDC<T>(addr);
-	}
-}
-
-void* GetFuncForAddr(ARM* cpu, u32 addr, bool store, int size)
-{
-	if (cpu->Num == 0)
-	{
-		switch (addr & 0xFF000000)
-		{
-		case 0x04000000:
-			if (!store && size == 32 && addr == 0x04100010 && NDS::ExMemCnt[0] & (1<<11))
-				return (void*)NDSCart::ReadROMData;
-
-			/*
-				unfortunately we can't map GPU2D this way
-				since it's hidden inside an object
-
-				though GPU3D registers are accessed much more intensive
-			*/
-			if (addr >= 0x04000320 && addr < 0x040006A4)
-			{
-				switch (size | store)
-				{
-				case 8: return (void*)GPU3D::Read8;		
-				case 9: return (void*)GPU3D::Write8;		
-				case 16: return (void*)GPU3D::Read16;
-				case 17: return (void*)GPU3D::Write16;
-				case 32: return (void*)GPU3D::Read32;
-				case 33: return (void*)GPU3D::Write32;
-				}
-			}
-
-			switch (size | store)
-			{
-			case 8: return (void*)NDS::ARM9IORead8;
-			case 9: return (void*)NDS::ARM9IOWrite8;
-			case 16: return (void*)NDS::ARM9IORead16;
-			case 17: return (void*)NDS::ARM9IOWrite16;
-			case 32: return (void*)NDS::ARM9IORead32;
-			case 33: return (void*)NDS::ARM9IOWrite32;
-			}
-			break;
-		case 0x06000000:
-			switch (size | store)
-			{
-			case 8: return (void*)VRAMRead<u8>;		
-			case 9: return NULL;
-			case 16: return (void*)VRAMRead<u16>;
-			case 17: return (void*)VRAMWrite<u16>;
-			case 32: return (void*)VRAMRead<u32>;
-			case 33: return (void*)VRAMWrite<u32>;
-			}
-			break;
-		}
-	}
-	else
-	{
-		switch (addr & 0xFF800000)
-		{
-		case 0x04000000:
-			if (addr >= 0x04000400 && addr < 0x04000520)
-			{
-				switch (size | store)
-				{
-				case 8: return (void*)SPU::Read8;		
-				case 9: return (void*)SPU::Write8;		
-				case 16: return (void*)SPU::Read16;
-				case 17: return (void*)SPU::Write16;
-				case 32: return (void*)SPU::Read32;
-				case 33: return (void*)SPU::Write32;
-				}
-			}
-
-			switch (size | store)
-			{
-			case 8: return (void*)NDS::ARM7IORead8;
-			case 9: return (void*)NDS::ARM7IOWrite8;		
-			case 16: return (void*)NDS::ARM7IORead16;
-			case 17: return (void*)NDS::ARM7IOWrite16;
-			case 32: return (void*)NDS::ARM7IORead32;
-			case 33: return (void*)NDS::ARM7IOWrite32;
-			}
-			break;
-		case 0x04800000:
-			if (addr < 0x04810000 && size >= 16)
-			{
-				switch (size | store)
-				{
-				case 16: return (void*)Wifi::Read;
-				case 17: return (void*)Wifi::Write;
-				case 32: return (void*)WifiRead32;
-				case 33: return (void*)WifiWrite32;
-				}
-			}
-			break;
-		case 0x06000000:
-		case 0x06800000:
-			switch (size | store)
-			{
-			case 8: return (void*)GPU::ReadVRAM_ARM7<u8>;
-			case 9: return (void*)GPU::WriteVRAM_ARM7<u8>;
-			case 16: return (void*)GPU::ReadVRAM_ARM7<u16>;
-			case 17: return (void*)GPU::WriteVRAM_ARM7<u16>;
-			case 32: return (void*)GPU::ReadVRAM_ARM7<u32>;
-			case 33: return (void*)GPU::WriteVRAM_ARM7<u32>;
-			}
-		}
-	}
-	return NULL;
-}
 
 }

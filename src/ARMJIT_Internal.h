@@ -3,6 +3,8 @@
 
 #include "types.h"
 #include <stdint.h>
+#include <string.h>
+#include <assert.h>
 
 #include "ARMJIT.h"
 
@@ -220,27 +222,6 @@ void* GetFuncForAddr(ARM* cpu, u32 addr, bool store, int size);
 
 template <u32 Num>
 void LinkBlock(ARM* cpu, u32 codeOffset);
-
-enum
-{
-	memregion_Other = 0,
-	memregion_ITCM,
-	memregion_DTCM,
-	memregion_BIOS9,
-	memregion_MainRAM,
-	memregion_SWRAM9,
-	memregion_SWRAM7,
-	memregion_IO9,
-	memregion_VRAM,
-	memregion_BIOS7,
-	memregion_WRAM7,
-	memregion_IO7,
-	memregion_Wifi,
-	memregion_VWRAM,
-};
-
-int ClassifyAddress9(u32 addr);
-int ClassifyAddress7(u32 addr);
 
 template <typename T> T SlowRead9(u32 addr, ARMv5* cpu);
 template <typename T> void SlowWrite9(u32 addr, ARMv5* cpu, T val);

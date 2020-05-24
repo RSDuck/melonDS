@@ -2,10 +2,95 @@
 
 #include "../Config.h"
 
+#include "../ARMJIT_Memory.h"
+
 using namespace Arm64Gen;
 
 namespace ARMJIT
 {
+
+bool Compiler::IsJITFault(u64 pc)
+{
+    return pc >= (u64)GetRXBase() && pc - (u64)GetRXBase() < JitMemUseableSize;
+}
+
+void Compiler::RewriteMemAccess(u64 pc)
+{
+    // stolen from flycast(https://github.com/libretro/flycast/blob/master/core/rec-ARM64/rec_arm64.cpp#L2142)
+    // and extended
+    const u32 memoryInstrValues[] =
+    {
+        0x38E06800,		// ldrsb
+		0x78E06800,		// ldrsh
+        0x38606800,     // ldrb
+        0x78606800,     // ldrh
+		0xB8606800,		// ldr w
+		0xF8606800,		// ldr x
+		0x38206800,		// strb
+		0x78206800,		// strh
+		0xB8206800,		// str w
+		0xF8206800,		// str x
+    };
+    const u8 memoryInstrSizes[] =
+    {
+        0, 1, 0, 1, 2, 3, 0, 1, 2, 3
+    };
+    const u32 memoryInstrMask = 0xFFE0EC00;
+
+    u32 instr = *(u32*)(pc);
+    printf("instr %08x\n", instr);
+    ptrdiff_t pcOffset = pc - (u64)GetRXBase();
+
+    for (int i = 0; i < 10; i++)
+    {
+        if ((instr & memoryInstrMask) == memoryInstrValues[i])
+        {
+            assert(memoryInstrSizes[i] < 3);
+
+            ptrdiff_t curCodeOffset = GetCodeOffset();
+
+            SetCodePtrUnsafe(pcOffset - 4); // patch the and as well
+
+            ARM64Reg rd = (ARM64Reg)(instr & 0x1F);
+
+            bool load = i < 6;
+            bool signExtend = i < 2;
+            u32 size = memoryInstrSizes[i];
+
+            printf("rewriting mem access %x %08x (%d %d %d)\n", pcOffset, instr, load, signExtend, size);
+
+            if (load)
+            {
+                BL(PatchedLoadFuncs[NDS::CurCPU][size]);
+                if (signExtend)
+                    SBFX(rd, W0, 0, 8 << size);
+                else if (size < 2)
+                    UBFX(rd, W0, 0, 8 << size);
+                else
+                    MOV(rd, W0);
+                
+                if (size == 2)
+                {
+                    HINT(HINT_NOP);
+                    HINT(HINT_NOP);
+                    HINT(HINT_NOP);
+                }
+            }
+            else
+            {
+                MOV(NDS::CurCPU == 0 ? W2 : W1, rd);
+                BL(PatchedStoreFuncs[NDS::CurCPU][size]);
+            }
+
+            FlushIcacheSection((u8*)pc - 4, (u8*)GetRXPtr());
+
+            SetCodePtrUnsafe(curCodeOffset);
+            return;
+        }
+    }
+
+    assert(false && "This should never happen!");
+}
 
 bool Compiler::Comp_MemLoadLiteral(int size, bool signExtend, int rd, u32 addr)
 {
@@ -120,61 +205,91 @@ void Compiler::Comp_MemAccess(int rd, int rn, Op2 offset, int size, int flags)
     if (!(flags & memop_Post) && (flags & memop_Writeback))
         MOV(rnMapped, W0);
 
+    u32 expectedTarget = Num == 0
+        ? ARMJIT_Memory::ClassifyAddress9(CurInstr.DataRegion)
+        : ARMJIT_Memory::ClassifyAddress7(CurInstr.DataRegion);
 
-    if (Num == 0)
+    if ((!Thumb && CurInstr.Cond() != 0xE) || ARMJIT_Memory::IsMappable(expectedTarget))
     {
-        MOV(X1, RCPU);
+        // take a chance at fastmem
+
+        MOVP2R(X2, Num == 0
+            ? ARMJIT_Memory::FastMem9Start
+            : ARMJIT_Memory::FastMem7Start);
+        // pssst don't tell Arisotura we're masking off the top 4-bits
+        ANDI2R(W1, W0, addressMask & 0xFFFFFFF);
         if (flags & memop_Store)
         {
-            MOV(W2, rdMapped);
-            switch (size)
-            {
-            case 32: QuickCallFunction(X3, SlowWrite9<u32>); break;
-            case 16: QuickCallFunction(X3, SlowWrite9<u16>); break;
-            case 8: QuickCallFunction(X3, SlowWrite9<u8>); break;
-            }
+            STRGeneric(size, rdMapped, X1, X2);
         }
         else
         {
-            switch (size)
+            LDRGeneric(size, flags & memop_SignExtend, rdMapped, X1, X2);
+            if (size == 32)
             {
-            case 32: QuickCallFunction(X3, SlowRead9<u32>); break;
-            case 16: QuickCallFunction(X3, SlowRead9<u16>); break;
-            case 8: QuickCallFunction(X3, SlowRead9<u8>); break;
+                ANDI2R(W0, W0, 3);
+                LSL(W0, W0, 3);
+                RORV(rdMapped, rdMapped, W0);
             }
         }
     }
     else
     {
-        if (flags & memop_Store)
+        if (Num == 0)
         {
-            MOV(W1, rdMapped);
-            switch (size)
+            MOV(X1, RCPU);
+            if (flags & memop_Store)
             {
-            case 32: QuickCallFunction(X3, SlowWrite7<u32>); break;
-            case 16: QuickCallFunction(X3, SlowWrite7<u16>); break;
-            case 8: QuickCallFunction(X3, SlowWrite7<u8>); break;
+                MOV(W2, rdMapped);
+                switch (size)
+                {
+                case 32: QuickCallFunction(X3, SlowWrite9<u32>); break;
+                case 16: QuickCallFunction(X3, SlowWrite9<u16>); break;
+                case 8: QuickCallFunction(X3, SlowWrite9<u8>); break;
+                }
+            }
+            else
+            {
+                switch (size)
+                {
+                case 32: QuickCallFunction(X3, SlowRead9<u32>); break;
+                case 16: QuickCallFunction(X3, SlowRead9<u16>); break;
+                case 8: QuickCallFunction(X3, SlowRead9<u8>); break;
+                }
             }
         }
         else
         {
-            switch (size)
+            if (flags & memop_Store)
             {
-            case 32: QuickCallFunction(X3, SlowRead7<u32>); break;
-            case 16: QuickCallFunction(X3, SlowRead7<u16>); break;
-            case 8: QuickCallFunction(X3, SlowRead7<u8>); break;
+                MOV(W1, rdMapped);
+                switch (size)
+                {
+                case 32: QuickCallFunction(X3, SlowWrite7<u32>); break;
+                case 16: QuickCallFunction(X3, SlowWrite7<u16>); break;
+                case 8: QuickCallFunction(X3, SlowWrite7<u8>); break;
+                }
+            }
+            else
+            {
+                switch (size)
+                {
+                case 32: QuickCallFunction(X3, SlowRead7<u32>); break;
+                case 16: QuickCallFunction(X3, SlowRead7<u16>); break;
+                case 8: QuickCallFunction(X3, SlowRead7<u8>); break;
+                }
             }
         }
-    }
-    
-    if (!(flags & memop_Store))
-    {
-        if (size == 32)
-            MOV(rdMapped, W0);
-        else if (flags & memop_SignExtend)
-            SBFM(rdMapped, W0, 0, size - 1);
-        else
-            UBFX(rdMapped, W0, 0, size);
+        
+        if (!(flags & memop_Store))
+        {
+            if (size == 32)
+                MOV(rdMapped, W0);
+            else if (flags & memop_SignExtend)
+                SBFX(rdMapped, W0, 0, size);
+            else
+                UBFX(rdMapped, W0, 0, size);
+        }
     }
 
     if (CurInstr.Info.Branches())
@@ -339,7 +454,7 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
         Comp_AddCycles_CD();
     else
         Comp_AddCycles_CDI();
-
+/*
     int expectedTarget = Num == 0
         ? ClassifyAddress9(CurInstr.DataRegion)
         : ClassifyAddress7(CurInstr.DataRegion);
@@ -347,7 +462,7 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
         expectedTarget = memregion_Other;
 
     bool compileFastPath = false;
-
+*/
     if (decrement)
     {
         SUB(W0, MapReg(rn), regsCount * 4);
