@@ -122,6 +122,7 @@ dk::Queue gQueue;
 
 dk::CmdBuf gCmdbuf;
 dk::Fence gCmdFence[2];
+dk::Fence gImageUploadFence;
 ImGui_GfxDataBlock gCmdbufData[2];
 
 dk::Image gFramebuffers[2];
@@ -271,8 +272,8 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
         dk::ImageView screenTexView {screenTexture};
         gCmdbuf.copyBufferToImage({stageBuffer.GetGpuAddr()}, screenTexView, {0, 0, 0, 256, 192*2, 1});
 
-        gQueue.submitCommands(gCmdbuf.finishList());
-        gQueue.waitIdle();
+        gCmdbuf.signalFence(gImageUploadFence);
+        gCmdbuf.waitFence(gImageUploadFence);
     }
 
     dk::ImageView colorTarget {gFramebuffers[slot]};
