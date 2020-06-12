@@ -146,6 +146,11 @@ public:
 
     NDS::MemRegion CodeMem;
 
+#ifdef JIT_ENABLED
+    u32 FastBlockLookupStart = 0, FastBlockLookupSize = 0;
+    u64* FastBlockLookup;
+#endif
+
     static u32 ConditionTable[16];
 };
 

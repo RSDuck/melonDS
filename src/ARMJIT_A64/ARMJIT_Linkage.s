@@ -39,6 +39,8 @@ ARM_Ret:
 
     ret
 
+.p2align 4,,15
+
 .global ARM_RestoreContext
 ARM_RestoreContext:
     mov sp, x0

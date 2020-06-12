@@ -1,9 +1,12 @@
+#include "compat_switch.h"
+
 #include "../NDS.h"
 #include "../GPU.h"
 #include "../version.h"
 #include "../Config.h"
 #include "../OpenGLSupport.h"
 #include "../SPU.h"
+#include "../ARMJIT_Memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +29,6 @@
 #include "imgui/imgui_impl_deko3d.h"
 
 #include "dr_wav.h"
-
-#include "compat_switch.h"
 
 #include "profiler.h"
 
@@ -1713,22 +1714,17 @@ int main(int argc, char* argv[])
                 }
                 ImGui::SliderInt("Block size", &Config::JIT_MaxBlockSize, 1, 32);
 
-                bool enableBranchInlining = Config::JIT_BrancheOptimisations > 0;
-                bool enableBranchLinking = Config::JIT_BrancheOptimisations == 2;
-                ImGui::Checkbox("Branch optimisations", &enableBranchInlining);
-                if (enableBranchInlining)
-                    ImGui::Checkbox("Branch linking", &enableBranchLinking);
-
-                if (enableBranchLinking && enableBranchInlining)
-                    Config::JIT_BrancheOptimisations = 2;
-                else if (enableBranchInlining)
-                    Config::JIT_BrancheOptimisations = 1;
-                else
-                    Config::JIT_BrancheOptimisations = 0;
+                bool enableBranchOpts = Config::JIT_BrancheOptimisations > 0;
+                ImGui::Checkbox("Branch optimisations", &enableBranchOpts);
+                Config::JIT_BrancheOptimisations = enableBranchOpts;
 
                 bool literalOptimisations = Config::JIT_LiteralOptimisations;
                 ImGui::Checkbox("Literal optimisations", &literalOptimisations);
                 Config::JIT_LiteralOptimisations = literalOptimisations;
+
+                bool fastMem = Config::JIT_FastMemory;
+                ImGui::Checkbox("Fast memory", &fastMem);
+                Config::JIT_FastMemory = fastMem;
             }
             ImGui::End();
 

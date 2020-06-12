@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "ARMJIT.h"
+#include "ARMJIT_Memory.h"
 
 // here lands everything which doesn't fit into ARMJIT.h
 // where it would be included by pretty much everything
@@ -162,8 +163,8 @@ public:
 		Data.SetLength(numAddresses * 2 + numLiterals);
 	}
 
-	u32 PseudoPhysicalAddr;
-
+	u32 StartAddr;
+	u32 StartAddrLocal;
 	u32 InstrHash, LiteralHash;
 	u8 Num;
 	u16 NumAddresses;
@@ -177,28 +178,8 @@ public:
 	{ return &Data[NumAddresses]; }
 	u32* Literals()
 	{ return &Data[NumAddresses * 2]; }
-	u32* Links()
-	{ return &Data[NumAddresses * 2 + NumLiterals]; }
-
-	u32 NumLinks()
-	{ return Data.Length - NumAddresses * 2 - NumLiterals; }
-
-	void AddLink(u32 link)
-	{
-		Data.Add(link);
-	}
-
-	void ResetLinks()
-	{
-		Data.SetLength(NumAddresses * 2 + NumLiterals);
-	}
 
 private:
-	/*
-		0..<NumInstrs - the instructions of the block
-		NumInstrs..<(NumLinks + NumInstrs) - pseudo physical addresses where the block is located
-			(atleast one, the pseudo physical address of the block)
-	*/
 	TinyVector<u32> Data;
 };
 
@@ -209,16 +190,26 @@ struct __attribute__((packed)) AddressRange
 	u32 Code;
 };
 
-extern AddressRange CodeRanges[ExeMemSpaceSize / 512];
 
 typedef void (*InterpreterFunc)(ARM* cpu);
 extern InterpreterFunc InterpretARM[];
 extern InterpreterFunc InterpretTHUMB[];
 
-
 extern TinyVector<u32> InvalidLiterals;
 
-void* GetFuncForAddr(ARM* cpu, u32 addr, bool store, int size);
+extern AddressRange* const CodeMemRegions[ARMJIT_Memory::memregions_Count];
+
+inline bool PageContainsCode(AddressRange* range)
+{
+	for (int i = 0; i < 8; i++)
+	{
+		if (range[i].Blocks.Length > 0)
+			return true;
+	}
+	return false;
+}
+
+u32 LocaliseCodeAddress(u32 num, u32 addr);
 
 template <u32 Num>
 void LinkBlock(ARM* cpu, u32 codeOffset);

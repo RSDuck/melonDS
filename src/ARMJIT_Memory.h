@@ -3,6 +3,8 @@
 
 #include "types.h"
 
+#include "ARM.h"
+
 namespace ARMJIT_Memory
 {
 
@@ -21,8 +23,7 @@ enum
 	memregion_DTCM,
 	memregion_BIOS9,
 	memregion_MainRAM,
-	memregion_SWRAM9,
-	memregion_SWRAM7,
+	memregion_SWRAM,
 	memregion_IO9,
 	memregion_VRAM,
 	memregion_BIOS7,
@@ -36,7 +37,16 @@ enum
 int ClassifyAddress9(u32 addr);
 int ClassifyAddress7(u32 addr);
 
+bool GetRegionMapping(int region, u32 num, u32& mappingStart, u32& mappingSize, u32& memoryOffset, u32& memorySize);
+
 bool IsMappable(int region);
+
+void RemapDTCM();
+void RemapSWRAM();
+
+void SetCodeProtection(int region, u32 offset, bool protect);
+
+void* GetFuncForAddr(ARM* cpu, u32 addr, bool store, int size);
 
 }
 

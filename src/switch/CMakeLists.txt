@@ -21,9 +21,13 @@ SET(SOURCES_SWITCH
 
 add_executable(melonDS.elf ${SOURCES_SWITCH})
 if (${CMAKE_BUILD_TYPE} STREQUAL Release)
-    target_link_libraries(melonDS.elf core deko3d nx)
+    target_link_libraries(melonDS.elf nx deko3d core)
 else()
-    target_link_libraries(melonDS.elf core deko3dd nxd)
+    if (ENABLE_LTO)
+        target_link_libraries(melonDS.elf nxd deko3dd core)
+    else()
+        target_link_libraries(melonDS.elf core deko3dd nxd)
+    endif()
 endif()
 
 add_custom_command(OUTPUT control.nacp

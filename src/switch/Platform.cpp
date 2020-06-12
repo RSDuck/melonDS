@@ -1,9 +1,9 @@
+#include "compat_switch.h"
+
 #include <stdio.h>
 #include <string.h>
 
 #include "../Platform.h"
-
-#include "compat_switch.h"
 
 namespace Platform
 {

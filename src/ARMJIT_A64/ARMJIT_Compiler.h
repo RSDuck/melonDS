@@ -9,7 +9,7 @@
 #include "../ARMJIT_Internal.h"
 #include "../ARMJIT_RegisterCache.h"
 
-#include <tuple>
+#include <unordered_map>
 
 namespace ARMJIT
 {
@@ -66,6 +66,13 @@ struct Op2
     };
 };
 
+struct LoadStorePatch
+{
+    void* PatchFunc;
+    s32 PatchOffset;
+    u32 PatchSize;
+};
+
 class Compiler : public Arm64Gen::ARM64XEmitter
 {
 public:
@@ -83,7 +90,7 @@ public:
         return RegCache.Mapping[reg];
     }
 
-    JitBlockEntry CompileBlock(u32 translatedAddr, ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
+    JitBlockEntry CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount);
 
     bool CanCompile(bool thumb, u16 kind);
 
@@ -194,9 +201,6 @@ public:
     void* Gen_JumpTo9(int kind);
     void* Gen_JumpTo7(int kind);
 
-    void LinkBlock(u32 offset, JitBlockEntry entry);
-    void UnlinkBlock(u32 offset);
-
     void Comp_BranchSpecialBehaviour(bool taken);
 
     JitBlockEntry AddEntryOffset(u32 offset)
@@ -210,7 +214,7 @@ public:
     }
 
     bool IsJITFault(u64 pc);
-    void RewriteMemAccess(u64 pc);
+    s64 RewriteMemAccess(u64 pc);
 
     bool Exit;
 
@@ -228,13 +232,14 @@ public:
 
     void* ReadBanked, *WriteBanked;
 
-    void* BranchStub[2];
-
     void* JumpToFuncs9[3];
     void* JumpToFuncs7[3];
 
-    void* PatchedLoadFuncs[2][3];
-    void* PatchedStoreFuncs[2][3];
+    std::unordered_map<ptrdiff_t, LoadStorePatch> LoadStorePatches; 
+
+    // [Num][Size][Sign Extend][Output register]
+    void* PatchedLoadFuncs[2][3][2][8];
+    void* PatchedStoreFuncs[2][3][8];
 
     RegisterCache<Compiler, Arm64Gen::ARM64Reg> RegCache;
 

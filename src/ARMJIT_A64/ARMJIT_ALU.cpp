@@ -243,7 +243,7 @@ void Compiler::Comp_Arithmetic(int op, bool S, ARM64Reg rd, ARM64Reg rn, Op2 op2
     if (S && !CurInstr.SetFlags)
         S = false;
 
-    bool CVInGP = false;
+    bool CVInGPR = false;
     switch (op)
     {
     case 0x2: // SUB
@@ -306,7 +306,7 @@ void Compiler::Comp_Arithmetic(int op, bool S, ARM64Reg rd, ARM64Reg rn, Op2 op2
         UBFX(W2, RCPSR, 29, 1);
         if (S)
         {
-            CVInGP = true;
+            CVInGPR = true;
             ADDS(W1, rn, W2);
             CSET(W2, CC_CS);
             CSET(W3, CC_VS);
@@ -335,7 +335,7 @@ void Compiler::Comp_Arithmetic(int op, bool S, ARM64Reg rd, ARM64Reg rn, Op2 op2
             ORN(W1, WZR, op2.Reg.Rm, op2.ToArithOption());
         if (S)
         {
-            CVInGP = true;
+            CVInGPR = true;
             ADDS(W1, W2, W1);
             CSET(W2, CC_CS);
             CSET(W3, CC_VS);
@@ -355,7 +355,7 @@ void Compiler::Comp_Arithmetic(int op, bool S, ARM64Reg rd, ARM64Reg rn, Op2 op2
         MVN(W1, rn);
         if (S)
         {
-            CVInGP = true;
+            CVInGPR = true;
             ADDS(W1, W2, W1);
             CSET(W2, CC_CS);
             CSET(W3, CC_VS);
@@ -379,12 +379,12 @@ void Compiler::Comp_Arithmetic(int op, bool S, ARM64Reg rd, ARM64Reg rn, Op2 op2
 
     if (S)
     {
-        if (CVInGP)
+        if (CVInGPR)
         {
             BFI(RCPSR, W2, 29, 1);
             BFI(RCPSR, W3, 28, 1);
         }
-        Comp_RetriveFlags(!CVInGP);
+        Comp_RetriveFlags(!CVInGPR);
     }
 }
 

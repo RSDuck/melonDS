@@ -21,6 +21,7 @@
 #include "NDS.h"
 #include "ARM.h"
 #include "ARMJIT.h"
+#include "ARMJIT_Memory.h"
 
 
 // access timing for cached regions
@@ -97,17 +98,25 @@ void ARMv5::CP15DoSavestate(Savestate* file)
 
 void ARMv5::UpdateDTCMSetting()
 {
+    u32 newDTCMBase;
+    u32 newDTCMSize;
     if (CP15Control & (1<<16))
     {
-        DTCMBase = DTCMSetting & 0xFFFFF000;
-        DTCMSize = 0x200 << ((DTCMSetting >> 1) & 0x1F);
+        newDTCMBase = DTCMSetting & 0xFFFFF000;
+        newDTCMSize = 0x200 << ((DTCMSetting >> 1) & 0x1F);
         //printf("DTCM [%08X] enabled at %08X, size %X\n", DTCMSetting, DTCMBase, DTCMSize);
     }
     else
     {
-        DTCMBase = 0xFFFFFFFF;
-        DTCMSize = 0;
+        newDTCMBase = 0xFFFFFFFF;
+        newDTCMSize = 0;
         //printf("DTCM disabled\n");
+    }
+    if (newDTCMBase != DTCMBase || newDTCMSize != DTCMSize)
+    {
+        ARMJIT_Memory::RemapDTCM();
+        DTCMBase = newDTCMBase;
+        DTCMSize = newDTCMSize;
     }
 }
 
@@ -824,7 +833,7 @@ void ARMv5::DataWrite8(u32 addr, u8 val)
         DataCycles = 1;
         *(u8*)&ITCM[addr & (ITCMPhysicalSize - 1)] = val;
 #ifdef JIT_ENABLED
-        ARMJIT::InvalidateITCMIfNecessary(addr);
+        ARMJIT::CheckAndInvalidate<0, ARMJIT_Memory::memregion_ITCM>(addr);
 #endif
         return;
     }
@@ -850,7 +859,7 @@ void ARMv5::DataWrite16(u32 addr, u16 val)
         DataCycles = 1;
         *(u16*)&ITCM[addr & (ITCMPhysicalSize - 1)] = val;
 #ifdef JIT_ENABLED
-        ARMJIT::InvalidateITCMIfNecessary(addr);
+        ARMJIT::CheckAndInvalidate<0, ARMJIT_Memory::memregion_ITCM>(addr);
 #endif
         return;
     }
@@ -876,7 +885,7 @@ void ARMv5::DataWrite32(u32 addr, u32 val)
         DataCycles = 1;
         *(u32*)&ITCM[addr & (ITCMPhysicalSize - 1)] = val;
 #ifdef JIT_ENABLED
-        ARMJIT::InvalidateITCMIfNecessary(addr);
+        ARMJIT::CheckAndInvalidate<0, ARMJIT_Memory::memregion_ITCM>(addr);
 #endif
         return;
     }
@@ -900,7 +909,7 @@ void ARMv5::DataWrite32S(u32 addr, u32 val)
         DataCycles += 1;
         *(u32*)&ITCM[addr & (ITCMPhysicalSize - 1)] = val;
 #ifdef JIT_ENABLED
-        ARMJIT::InvalidateITCMIfNecessary(addr);
+        ARMJIT::CheckAndInvalidate<0, ARMJIT_Memory::memregion_ITCM>(addr);
 #endif
         return;
     }
