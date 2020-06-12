@@ -284,7 +284,7 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     if (guiState == 1)
         gCmdbuf.clearColor(0, DkColorMask_RGBA, 0.0f, 0.0f, 0.0f, 0.f);
     else
-        gCmdbuf.clearColor(0, DkColorMask_RGBA, 117.f/255.f, 38.f/255.f, 50.f/255.f, 0.f);
+        gCmdbuf.clearColor(0, DkColorMask_RGBA, 222.f/255.f, 0.f/255.f, 46.f/255.f, 0.f);
 
     ImGui_ImplDeko3D_SetupRenderState(gCmdbuf);
 
@@ -1131,6 +1131,11 @@ int main(int argc, char* argv[])
 
     ImGuiStyle& style = ImGui::GetStyle();
     style.TouchExtraPadding = ImVec2(4, 4);
+    style.Colors[ImGuiCol_TitleBg] = ImColor(76, 158, 43);
+    style.Colors[ImGuiCol_TitleBgActive] = ImColor(50, 107, 29);
+    style.Colors[ImGuiCol_Button] = ImColor(76, 158, 43);
+    style.Colors[ImGuiCol_ButtonActive] = ImColor(32, 210, 0);
+    style.Colors[ImGuiCol_ButtonHovered] = ImColor(50, 107, 29);
     style.ScaleAllSizes(2.f);
 
     ImGuiIO& io = ImGui::GetIO();
