@@ -114,7 +114,7 @@ void ARMv5::UpdateDTCMSetting()
     }
     if (newDTCMBase != DTCMBase || newDTCMSize != DTCMSize)
     {
-        ARMJIT_Memory::RemapDTCM();
+        ARMJIT_Memory::RemapDTCM(newDTCMBase, newDTCMSize);
         DTCMBase = newDTCMBase;
         DTCMSize = newDTCMSize;
     }

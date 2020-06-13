@@ -264,13 +264,17 @@ void SetCodeProtection(int region, u32 offset, bool protect)
 	}
 }
 
-void RemapDTCM()
+void RemapDTCM(u32 newBase, u32 newSize)
 {
 	// this first part could be made more efficient
 	// by unmapping DTCM first and then map the holes
-	u32 dtcmBase = NDS::ARM9->DTCMBase;
-	u32 dtcmEnd = dtcmBase + NDS::ARM9->DTCMSize;
-	// unmap all regions containing the DTCM
+	u32 oldDTCMBase = NDS::ARM9->DTCMBase;
+	u32 oldDTCBEnd = oldDTCMBase + NDS::ARM9->DTCMSize;
+
+	u32 newEnd = newBase + newSize;
+
+	printf("remapping DTCM %x %x %x %x\n", newBase, newEnd, oldDTCMBase, oldDTCBEnd);
+	// unmap all regions containing the old or the current DTCM mapping
 	for (int region = 0; region < memregions_Count; region++)
 	{
 		if (region == memregion_DTCM)
@@ -280,10 +284,17 @@ void RemapDTCM()
 		{
 			Mapping& mapping = Mappings[region][i];
 
-			if ((dtcmBase >= mapping.Addr && dtcmBase < mapping.Addr + mapping.Size)
-				|| (dtcmEnd >= mapping.Addr && dtcmEnd < mapping.Addr + mapping.Size))
+			u32 start = mapping.Addr;
+			u32 end = mapping.Addr + mapping.Size;
+
+			printf("mapping %d %x %x %x %x\n", region, mapping.Addr, mapping.Size, mapping.Num, mapping.LocalOffset);
+
+			bool oldOverlap = NDS::ARM9->DTCMSize > 0 && ((oldDTCMBase >= start && oldDTCMBase < end) || (oldDTCBEnd >= start && oldDTCBEnd < end));
+			bool newOverlap = newSize > 0 && ((newBase >= start && newBase < end) || (newEnd >= start && newEnd < end));
+
+			if (mapping.Num == 0 && (oldOverlap || newOverlap))
 			{
-				mapping.Unmap(i);
+				mapping.Unmap(region);
 				Mappings[region].Remove(i);
 			}
 			else
@@ -302,11 +313,17 @@ void RemapDTCM()
 
 void RemapSWRAM()
 {
+	printf("remapping SWRAM\n");
 	for (int i = 0; i < Mappings[memregion_SWRAM].Length; i++)
 	{
 		Mappings[memregion_SWRAM][i].Unmap(memregion_SWRAM);
 	}
 	Mappings[memregion_SWRAM].Clear();
+	for (int i = 0; i < Mappings[memregion_WRAM7].Length; i++)
+	{
+		Mappings[memregion_WRAM7][i].Unmap(memregion_WRAM7);
+	}
+	Mappings[memregion_WRAM7].Clear();
 }
 
 bool MapAtAddress(u32 addr)

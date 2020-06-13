@@ -41,7 +41,7 @@ bool GetRegionMapping(int region, u32 num, u32& mappingStart, u32& mappingSize, 
 
 bool IsMappable(int region);
 
-void RemapDTCM();
+void RemapDTCM(u32 newBase, u32 newSize);
 void RemapSWRAM();
 
 void SetCodeProtection(int region, u32 offset, bool protect);

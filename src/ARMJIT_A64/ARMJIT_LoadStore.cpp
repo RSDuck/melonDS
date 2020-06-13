@@ -460,7 +460,8 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
         ? ARMJIT_Memory::ClassifyAddress9(CurInstr.DataRegion)
         : ARMJIT_Memory::ClassifyAddress7(CurInstr.DataRegion);
 
-    bool compileFastPath = store && !usermode && (CurInstr.Cond() < 0xE || ARMJIT_Memory::IsMappable(expectedTarget));
+    bool compileFastPath = Config::JIT_FastMemory
+        && store && !usermode && (CurInstr.Cond() < 0xE || ARMJIT_Memory::IsMappable(expectedTarget));
 
     if (decrement)
     {
