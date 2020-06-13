@@ -173,6 +173,12 @@ void ImGui_ImplDeko3D_CreateDeviceObjects(dk::Queue queue)
         ImGui_ImplDeko3D_GetImageDescriptor(0)->initialize(imageView);
         ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[0].initialize(dk::Sampler{}.setFilter(DkFilter_Linear, DkFilter_Linear));
         ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[1].initialize(dk::Sampler{}.setFilter(DkFilter_Nearest, DkFilter_Nearest));
+        ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[2].initialize(dk::Sampler{}
+            .setFilter(DkFilter_Nearest, DkFilter_Nearest)
+            .setWrapMode(DkWrapMode_ClampToEdge, DkWrapMode_ClampToEdge, DkWrapMode_ClampToEdge));
+        ((dk::SamplerDescriptor*)g_SamplerDescriptor.GetCpuAddr())[3].initialize(dk::Sampler{}
+            .setFilter(DkFilter_Linear, DkFilter_Linear)
+            .setWrapMode(DkWrapMode_ClampToEdge, DkWrapMode_ClampToEdge, DkWrapMode_ClampToEdge));
 
         tmpcmdbuf.destroy();
         g_ResetTmp();

@@ -134,7 +134,7 @@ StupidStackBuffer codeBuffer;
 StupidStackBuffer dataBuffer;
 StupidStackBuffer tempBuffer;
 
-dk::Image rotatedFb, screenTexture;
+dk::Image screenTextureTop, screenTextureBottom;
 
 ImGui_GfxDataBlock fullscreenQuadMem;
 ImGui_GfxDataBlock screenVerticesMem;
@@ -229,16 +229,6 @@ void graphicsInitialize()
 
     gSwapchain = dk::SwapchainMaker{gDevice, nwindowGetDefault(), fbArray}.create();
 
-    dk::ImageLayout rotatedFbLayout;
-    dk::ImageLayoutMaker{gDevice}
-        .setFlags(DkImageFlags_UsageRender | DkImageFlags_HwCompression)
-        .setFormat(DkImageFormat_RGBA8_Unorm)
-        .setDimensions(1280, 1280)
-        .initialize(rotatedFbLayout);
-
-    ImGui_GfxDataBlock rotatedFbMem = allocTexture(rotatedFbLayout.getSize(), rotatedFbLayout.getAlignment());
-    rotatedFb.initialize(rotatedFbLayout, rotatedFbMem.mem, rotatedFbMem.offset);
-
     fullscreenQuadMem = allocData(sizeof(fullscreenQuadData), alignof(fullscreenQuadData[0]));
     memcpy(fullscreenQuadMem.GetCpuAddr(), fullscreenQuadData, sizeof(fullscreenQuadData));
 
@@ -248,11 +238,13 @@ void graphicsInitialize()
     dk::ImageLayoutMaker{gDevice}
         .setFlags(0)
         .setFormat(DkImageFormat_BGRX8_Unorm)
-        .setDimensions(256, 192*2)
+        .setDimensions(256, 192)
         .initialize(screenTextureLayout);
 
-    ImGui_GfxDataBlock screenTextureMem = allocTexture(screenTextureLayout.getSize(), screenTextureLayout.getAlignment());
-    screenTexture.initialize(screenTextureLayout, screenTextureMem.mem, screenTextureMem.offset);
+    ImGui_GfxDataBlock screenTextureTopMem = allocTexture(screenTextureLayout.getSize(), screenTextureLayout.getAlignment());
+    ImGui_GfxDataBlock screenTextureBottomMem = allocTexture(screenTextureLayout.getSize(), screenTextureLayout.getAlignment());
+    screenTextureTop.initialize(screenTextureLayout, screenTextureTopMem.mem, screenTextureTopMem.offset);
+    screenTextureBottom.initialize(screenTextureLayout, screenTextureBottomMem.mem, screenTextureBottomMem.offset);
 }
 
 void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
@@ -269,8 +261,10 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
         memcpy(stageBuffer.GetCpuAddr(), GPU::Framebuffer[GPU::FrontBuffer][0], 256*192*4);
         memcpy(((uint32_t*)stageBuffer.GetCpuAddr()) + 256*192, GPU::Framebuffer[GPU::FrontBuffer][1], 256*192*4);
 
-        dk::ImageView screenTexView {screenTexture};
-        gCmdbuf.copyBufferToImage({stageBuffer.GetGpuAddr()}, screenTexView, {0, 0, 0, 256, 192*2, 1});
+        dk::ImageView screenTexViewTop {screenTextureTop};
+        gCmdbuf.copyBufferToImage({stageBuffer.GetGpuAddr()}, screenTexViewTop, {0, 0, 0, 256, 192, 1});
+        dk::ImageView screenTexViewBottom {screenTextureBottom};
+        gCmdbuf.copyBufferToImage({stageBuffer.GetGpuAddr() + 256*192*4}, screenTexViewBottom, {0, 0, 0, 256, 192, 1});
 
         gCmdbuf.signalFence(gImageUploadFence);
         gCmdbuf.waitFence(gImageUploadFence);
@@ -303,9 +297,11 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
 
     if (guiState > 0)
     {
-        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(2, Config::Filtering ? 0 : 1));
         gCmdbuf.bindVtxBuffer(0, screenVerticesMem.GetGpuAddr(), screenVerticesMem.size);
-        gCmdbuf.draw(DkPrimitive_Quads, 8, 1, 0, 0);
+        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(1, Config::Filtering ? 2 : 3));
+        gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 0, 0);
+        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(2, Config::Filtering ? 2 : 3));
+        gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 4, 0);
 
         resetTmp();
     }
@@ -354,8 +350,8 @@ void updateScreenLayout(int screenWidth, int screenHeight)
     const ImDrawVert verticesSingleScreen[] =
     {
         {{-256.f/2, -192.f/2}, {0.f, 0.f}, 0xFFFFFFFF},
-        {{-256.f/2, 192.f/2}, {0.f, 0.5f}, 0xFFFFFFFF},
-        {{256.f/2, 192.f/2}, {1.f, 0.5f}, 0xFFFFFFFF},
+        {{-256.f/2, 192.f/2}, {0.f, 1.f}, 0xFFFFFFFF},
+        {{256.f/2, 192.f/2}, {1.f, 1.f}, 0xFFFFFFFF},
         {{256.f/2, -192.f/2}, {1.f, 0.f}, 0xFFFFFFFF},
     };
 
@@ -391,10 +387,7 @@ void updateScreenLayout(int screenWidth, int screenHeight)
         for (int i = 0; i < 4; i++)
             vertices[i].pos[idx] -= offset;
         for (int i = 0; i < 4; i++)
-        {
             vertices[i + 4].pos[idx] += offset;
-            vertices[i + 4].uv[1] += 0.5f;
-        }
     }
 
     // scale
@@ -1143,8 +1136,8 @@ int main(int argc, char* argv[])
 
     ImGui_ImplDeko3D_Init(gDevice, gQueue, allocShader, allocData, allocTexture, allocTmp, resetTmp);
 
-    ImGui_ImplDeko3D_GetImageDescriptor(1)->initialize(dk::ImageView{rotatedFb});
-    ImGui_ImplDeko3D_GetImageDescriptor(2)->initialize(dk::ImageView{screenTexture});
+    ImGui_ImplDeko3D_GetImageDescriptor(1)->initialize(dk::ImageView{screenTextureTop});
+    ImGui_ImplDeko3D_GetImageDescriptor(2)->initialize(dk::ImageView{screenTextureBottom});
 
     updateScreenLayout(screenWidth, screenHeight);
 
