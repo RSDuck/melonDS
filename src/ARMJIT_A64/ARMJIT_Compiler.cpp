@@ -210,8 +210,7 @@ Compiler::Compiler()
     assert(succeded);
 
     SetCodeBase((u8*)JitRWStart, (u8*)JitRXStart);
-    JitMemUseableSize = JitMemSize;
-    Reset();
+    JitMemMainSize = JitMemSize;
 #else
     u64 pageSize = sysconf(_SC_PAGE_SIZE);
     u8* pageAligned = (u8*)(((u64)JitMem & ~(pageSize - 1)) + pageSize);
@@ -220,8 +219,8 @@ Compiler::Compiler()
 
     SetCodeBase(pageAligned, pageAligned);
     JitMemUseableSize = alignedSize;
-    Reset();
 #endif
+    SetCodePtr(0);
 
     for (int i = 0; i < 3; i++)
     {
@@ -373,7 +372,11 @@ Compiler::Compiler()
 
     FlushIcache();
 
-    JitMemUseableSize -= GetCodeOffset();
+    JitMemSecondarySize = 1024*1024*4;
+
+    JitMemMainSize -= GetCodeOffset();
+    JitMemMainSize -= JitMemSecondarySize;
+
     SetCodeBase((u8*)GetRWPtr(), (u8*)GetRXPtr());
 }
 
@@ -599,9 +602,14 @@ void Compiler::Comp_BranchSpecialBehaviour(bool taken)
 
 JitBlockEntry Compiler::CompileBlock(ARM* cpu, bool thumb, FetchedInstr instrs[], int instrsCount)
 {
-    if (JitMemSize - GetCodeOffset() < 1024 * 16)
+    if (JitMemMainSize - GetCodeOffset() < 1024 * 16)
     {
         printf("JIT near memory full, resetting...\n");
+        ResetBlockCache();
+    }
+    if ((JitMemMainSize +  JitMemSecondarySize) - OtherCodeRegion < 1024 * 8)
+    {
+        printf("JIT far memory full, resetting...\n");
         ResetBlockCache();
     }
 
@@ -741,10 +749,11 @@ void Compiler::Reset()
     LoadStorePatches.clear();
 
     SetCodePtr(0);
+    OtherCodeRegion = JitMemMainSize;
 
     const u32 brk_0 = 0xD4200000;
 
-    for (int i = 0; i < JitMemUseableSize / 4; i++)
+    for (int i = 0; i < (JitMemMainSize + JitMemSecondarySize) / 4; i++)
         *(((u32*)GetRWPtr()) + i) = brk_0;
 }
 

@@ -216,6 +216,15 @@ public:
     bool IsJITFault(u64 pc);
     s64 RewriteMemAccess(u64 pc);
 
+    void SwapCodeRegion()
+    {
+        ptrdiff_t offset = GetCodeOffset();
+        SetCodePtrUnsafe(OtherCodeRegion);
+        OtherCodeRegion = offset;
+    }
+
+    ptrdiff_t OtherCodeRegion;
+
     bool Exit;
 
     FetchedInstr CurInstr;
@@ -228,7 +237,8 @@ public:
 
     BitSet32 SavedRegs;
 
-    u32 JitMemUseableSize;
+    u32 JitMemSecondarySize;
+    u32 JitMemMainSize;
 
     void* ReadBanked, *WriteBanked;
 

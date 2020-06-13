@@ -11,7 +11,7 @@ namespace ARMJIT
 
 bool Compiler::IsJITFault(u64 pc)
 {
-    return pc >= (u64)GetRXBase() && pc - (u64)GetRXBase() < JitMemUseableSize;
+    return pc >= (u64)GetRXBase() && pc - (u64)GetRXBase() < (JitMemMainSize + JitMemSecondarySize);
 }
 
 s64 Compiler::RewriteMemAccess(u64 pc)
@@ -41,7 +41,7 @@ s64 Compiler::RewriteMemAccess(u64 pc)
 
         return patch.PatchOffset;
     }
-    printf("this is a JIT bug!\n");
+    printf("this is a JIT bug! %08x\n", __builtin_bswap32(*(u32*)pc));
     assert(false);
 }
 
@@ -455,22 +455,111 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
         Comp_AddCycles_CD();
     else
         Comp_AddCycles_CDI();
-/*
-    int expectedTarget = Num == 0
-        ? ClassifyAddress9(CurInstr.DataRegion)
-        : ClassifyAddress7(CurInstr.DataRegion);
-    if (usermode || CurInstr.Cond() < 0xE)
-        expectedTarget = memregion_Other;
 
-    bool compileFastPath = false;
-*/
+    int expectedTarget = Num == 0
+        ? ARMJIT_Memory::ClassifyAddress9(CurInstr.DataRegion)
+        : ARMJIT_Memory::ClassifyAddress7(CurInstr.DataRegion);
+
+    bool compileFastPath = store && !usermode && (CurInstr.Cond() < 0xE || ARMJIT_Memory::IsMappable(expectedTarget));
+
     if (decrement)
     {
         SUB(W0, MapReg(rn), regsCount * 4);
+        ANDI2R(W0, W0, ~3);
         preinc ^= true;
     }
     else
-        MOV(W0, MapReg(rn));
+    {
+        ANDI2R(W0, MapReg(rn), ~3);
+    }
+
+    LoadStorePatch patch;
+    if (compileFastPath)
+    {
+        ptrdiff_t fastPathStart = GetCodeOffset();
+        ptrdiff_t firstLoadStoreOffset;
+
+        bool firstLoadStore = true;
+
+        MOVP2R(X1, Num == 0 ? ARMJIT_Memory::FastMem9Start : ARMJIT_Memory::FastMem7Start);
+        ADD(X1, X1, X0);
+
+        u32 offset = preinc ? 4 : 0;
+        BitSet16::Iterator it = regs.begin();
+
+        if (regsCount & 1)
+        {
+            int reg = *it;
+            it++;
+
+            ARM64Reg first = W3;
+            if (RegCache.LoadedRegs & (1 << reg))
+                first = MapReg(reg);
+            else if (store)
+                LoadReg(reg, first);
+
+            if (firstLoadStore)
+            {
+                firstLoadStoreOffset = GetCodeOffset();
+                firstLoadStore = false;
+            }
+
+            if (store)
+                STR(INDEX_UNSIGNED, first, X1, offset);
+            else
+                LDR(INDEX_UNSIGNED, first, X1, offset);
+
+            if (!(RegCache.LoadedRegs & (1 << reg)) && !store)
+                SaveReg(reg, first);
+
+            offset += 4;
+        }
+
+        while (it != regs.end())
+        {
+            int reg = *it;
+            it++;
+            int nextReg = *it;
+            it++;
+
+            ARM64Reg first = W3, second = W4;
+            if (RegCache.LoadedRegs & (1 << reg))
+                first = MapReg(reg);
+            else if (store)
+                LoadReg(reg, first);
+            if (RegCache.LoadedRegs & (1 << nextReg))
+                second = MapReg(nextReg);
+            else if (store)
+                LoadReg(nextReg, second);
+
+            if (firstLoadStore)
+            {
+                firstLoadStoreOffset = GetCodeOffset();
+                firstLoadStore = false;
+            }
+
+            if (store)
+                STP(INDEX_SIGNED, first, second, X1, offset);
+            else
+                LDP(INDEX_SIGNED, first, second, X1, offset);
+
+            if (!(RegCache.LoadedRegs & (1 << reg)) && !store)
+                SaveReg(reg, first);
+            if (!(RegCache.LoadedRegs & (1 << nextReg)) && !store)
+                SaveReg(nextReg, second);
+
+            offset += 8;
+        }
+
+        patch.PatchSize = GetCodeOffset() - fastPathStart;
+        patch.PatchOffset = fastPathStart - firstLoadStoreOffset;
+        SwapCodeRegion();
+        patch.PatchFunc = GetRXPtr();
+
+        LoadStorePatches[firstLoadStoreOffset] = patch;
+
+        ABI_PushRegisters({30});
+    }
 
     int i = 0;
 
@@ -616,6 +705,15 @@ s32 Compiler::Comp_MemAccessBlock(int rn, BitSet16 regs, bool store, bool preinc
         }
     }
     ADD(SP, SP, ((regsCount + 1) & ~1) * 8);
+
+    if (compileFastPath)
+    {
+        ABI_PopRegisters({30});
+        RET();
+
+        FlushIcacheSection((u8*)patch.PatchFunc, (u8*)GetRXPtr());
+        SwapCodeRegion();
+    }
 
     if (!store && regs[15])
     {
