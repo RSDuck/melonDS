@@ -298,9 +298,9 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     if (guiState > 0)
     {
         gCmdbuf.bindVtxBuffer(0, screenVerticesMem.GetGpuAddr(), screenVerticesMem.size);
-        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(1, Config::Filtering ? 2 : 3));
+        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(1, Config::Filtering ? 3 : 2));
         gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 0, 0);
-        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(2, Config::Filtering ? 2 : 3));
+        gCmdbuf.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(2, Config::Filtering ? 3 : 2));
         gCmdbuf.draw(DkPrimitive_Quads, 4, 1, 4, 0);
 
         resetTmp();
@@ -980,6 +980,14 @@ struct Filebrowser
         }
 
         closedir(dir);
+
+        std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
+        {
+            if (a.isDir == b.isDir)
+                return strcasecmp(a.name, b.name) < 0;
+            else
+                return a.isDir;
+        });
     }
 
     void MoveIntoDirectory(const char* name)
@@ -1060,6 +1068,10 @@ struct Filebrowser
     char* entryselected;
 };
 
+namespace Platform
+{
+extern char ExecutableDir[128];
+}
 
 const int clockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
 
@@ -1078,8 +1090,19 @@ int main(int argc, char* argv[])
     //GDBStub_Init();
     //GDBStub_Breakpoint();
 //#endif
-
     romfsInit();
+
+    {
+        int len = strlen(argv[0]);
+        int lastSlash;
+        for (lastSlash = len - 1; lastSlash >= 0; lastSlash--)
+        {
+            if (argv[0][lastSlash] == '/')
+                break;
+        }
+        memcpy(Platform::ExecutableDir, argv[0], lastSlash);
+        Platform::ExecutableDir[lastSlash] = '\0';
+    }
 
     AppletHookCookie aptCookie;
     appletLockExit();

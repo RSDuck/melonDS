@@ -8,6 +8,8 @@
 namespace Platform
 {
 
+char ExecutableDir[128];
+
 void StopEmu()
 {
 }
@@ -30,20 +32,16 @@ FILE* OpenFile(const char* path, const char* mode, bool mustexist)
 
 FILE* OpenLocalFile(const char* path, const char* mode)
 {
-    FILE* ret = fopen(path, mode);
+    char finalPath[128];
+    sprintf(finalPath, "%s/%s", ExecutableDir, path);
+
+    FILE* ret = fopen(finalPath, mode);
     if (ret)
         return ret;
 
-    const char* configDir = "/melonds/";
-    int configPathLen = strlen(configDir);
-    int pathLen = strlen(path);
+    sprintf(finalPath, "/melonds/%s", path);
 
-    char* resPath = new char[configPathLen + pathLen + 1];
-    strcpy(resPath, configDir);
-    strcpy(resPath + configPathLen, path);
-
-    ret = fopen(resPath, mode);
-    delete[] resPath;
+    ret = fopen(finalPath, mode);
 
     return ret;
 }
