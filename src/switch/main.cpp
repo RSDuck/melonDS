@@ -960,10 +960,14 @@ struct Filebrowser
             {
                 if (nameLen < 4)
                     continue;
-                if (cur->d_name[nameLen - 4] != '.' 
-                    || cur->d_name[nameLen - 3] != 'n' 
-                    || cur->d_name[nameLen - 2] != 'd' 
-                    || cur->d_name[nameLen - 1] != 's')
+                if (!(cur->d_name[nameLen - 4] == '.' 
+                    && cur->d_name[nameLen - 3] == 'n' 
+                    && cur->d_name[nameLen - 2] == 'd' 
+                    && cur->d_name[nameLen - 1] == 's')
+                    && !(cur->d_name[nameLen - 4] == '.'
+                    && cur->d_name[nameLen - 3] == 'b'
+                    && cur->d_name[nameLen - 2] == 'i'
+                    && cur->d_name[nameLen - 1] == 'n'))
                     continue;
 
                 entry.name = new char[nameLen+1];
