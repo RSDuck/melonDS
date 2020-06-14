@@ -136,7 +136,6 @@ StupidStackBuffer tempBuffer;
 
 dk::Image screenTextureTop, screenTextureBottom;
 
-ImGui_GfxDataBlock fullscreenQuadMem;
 ImGui_GfxDataBlock screenVerticesMem;
 
 static const ImDrawVert fullscreenQuadData[] =
@@ -229,9 +228,6 @@ void graphicsInitialize()
 
     gSwapchain = dk::SwapchainMaker{gDevice, nwindowGetDefault(), fbArray}.create();
 
-    fullscreenQuadMem = allocData(sizeof(fullscreenQuadData), alignof(fullscreenQuadData[0]));
-    memcpy(fullscreenQuadMem.GetCpuAddr(), fullscreenQuadData, sizeof(fullscreenQuadData));
-
     screenVerticesMem = allocData(sizeof(ImDrawVert) * 8, alignof(ImDrawVert));
 
     dk::ImageLayout screenTextureLayout;
@@ -247,6 +243,24 @@ void graphicsInitialize()
     screenTextureBottom.initialize(screenTextureLayout, screenTextureBottomMem.mem, screenTextureBottomMem.offset);
 }
 
+void graphicsExit()
+{
+    gQueue.waitIdle();
+    gQueue.destroy();
+
+    gCmdbuf.clear();
+    gCmdbuf.destroy();
+
+    gSwapchain.destroy();
+
+    textureBuffer.Destroy();
+    codeBuffer.Destroy();
+    dataBuffer.Destroy();
+    tempBuffer.Destroy();
+
+    gDevice.destroy();
+}
+
 void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
 {
     int slot = gQueue.acquireImage(gSwapchain);
@@ -257,7 +271,7 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     
     if (guiState == 1)
     {
-        ImGui_GfxDataBlock stageBuffer = allocTmp(256*192*2, 16);
+        ImGui_GfxDataBlock stageBuffer = allocTmp(256*192*2, DK_IMAGE_LINEAR_STRIDE_ALIGNMENT);
         memcpy(stageBuffer.GetCpuAddr(), GPU::Framebuffer[GPU::FrontBuffer][0], 256*192*4);
         memcpy(((uint32_t*)stageBuffer.GetCpuAddr()) + 256*192, GPU::Framebuffer[GPU::FrontBuffer][1], 256*192*4);
 
@@ -314,23 +328,6 @@ void graphicsUpdate(int guiState, int screenWidth, int screenHeight)
     gQueue.submitCommands(gCmdbuf.finishList());
 
     gQueue.presentImage(gSwapchain, slot);
-}
-
-void graphicsExit()
-{
-    gQueue.waitIdle();
-    gQueue.destroy();
-
-    gCmdbuf.clear();
-    gCmdbuf.destroy();
-
-    gSwapchain.destroy();
-
-    textureBuffer.Destroy();
-    codeBuffer.Destroy();
-    dataBuffer.Destroy();
-
-    gDevice.destroy();
 }
 
 void applyOverclock(bool usePCV, ClkrstSession* session, int setting)
@@ -550,23 +547,37 @@ static s16* MicWavBuffer = NULL;
 
 void loadMicSample()
 {
-    unsigned int channels, sampleRate;
-    drwav_uint64 totalSamples;
-    drwav_int16* result = drwav_open_file_and_read_pcm_frames_s16("/melonds/micsample.wav", 
-        &channels, &sampleRate, &totalSamples, NULL);
-    
-    const u64 dstfreq = 44100;
-
-    if (result && channels == 1 && totalSamples >= 735 && sampleRate == dstfreq)
+    FILE* f = Platform::OpenLocalFile("micsample.wav", "rb");
+    if (f)
     {
-        MicWavBuffer = result;
-        MicWavLength = totalSamples;
+        fseek(f, 0, SEEK_END);
+        long filesize = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        u8* wavFile = new u8[filesize];
+        fread(wavFile, filesize, 1, f);
+        fclose(f);
+
+        unsigned int channels, sampleRate;
+        drwav_uint64 totalSamples;
+        drwav_int16* result = drwav_open_memory_and_read_pcm_frames_s16(wavFile, filesize,
+            &channels, &sampleRate, &totalSamples, NULL);
+
+        delete[] wavFile;
+        
+        const u64 dstfreq = 44100;
+
+        if (result && channels == 1 && totalSamples >= 735 && sampleRate == dstfreq)
+        {
+            MicWavBuffer = result;
+            MicWavLength = totalSamples;
+        }
     }
 }
 
 void freeMicSample()
 {
-    free(MicWavBuffer);
+    if (MicWavBuffer)
+        free(MicWavBuffer);
 }
 
 void feedMicAudio(u32 state)
@@ -1664,7 +1675,7 @@ int main(int argc, char* argv[])
                 for (int i = 0; i < sizeof(requiredFiles)/sizeof(requiredFiles[0]); i++)
                 {
                     if (!(filesReady & (1 << i)))
-                        ImGui::Text("File: /melonds/%s is missing", requiredFiles[i]);
+                        ImGui::Text("File: /melonds/%s or /switch/melonds/%s is missing", requiredFiles[i], requiredFiles[i]);
                 }
                 if (ImGui::Button("Exit"))
                     running = false;
@@ -1776,8 +1787,8 @@ int main(int argc, char* argv[])
             {
                 if (ImGui::Begin("Couldn't load mic sample"))
                 {
-                    ImGui::BulletText("You can proceed but microphone input won't be available\n");
-                    ImGui::BulletText("Make sure to put the sample into /melonds/micsample.wav");
+                    ImGui::BulletText("You can proceed but microphone input won't be available");
+                    ImGui::BulletText("Make sure to put the sample into /melonds/micsample.wav or /switch/melonds/micsample.wav");
                     ImGui::BulletText("The file has to be saved as 44100Hz mono 16-bit signed pcm and be atleast 1/60s long");
                 }
                 ImGui::End();
@@ -1964,6 +1975,7 @@ int main(int argc, char* argv[])
     appletUnhook(&aptCookie);
     appletUnlockExit();
 
+    printf("bis zum bitteren ende!\n");
 //#ifdef GDB_ENABLED
     close(nxlinkSocket);
     socketExit();
