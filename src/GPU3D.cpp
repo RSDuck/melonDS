@@ -786,8 +786,7 @@ void MatrixMult4x3(s32* m, s32* s)
         "st1 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[m]]\n"
         : "+m" (m)
         : [m] "r" (m), [s] "r" (s), [c] "r" (0x1000)
-        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23",
-            "memory"
+        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23"
     );
     PROFILER_END_SECTION
 }
@@ -795,7 +794,6 @@ void MatrixMult4x3(s32* m, s32* s)
 void MatrixMult3x3(s32* m, s32* s)
 {
     PROFILER_SECTION(mulmat3x3)
-    // assumes s has a length of atleast 16
     __asm__ volatile
     (
         "ld1 {v0.4s, v1.4s, v2.4s}, [%[m]]\n"
@@ -832,41 +830,72 @@ void MatrixMult3x3(s32* m, s32* s)
         "st1 {v0.4s, v1.4s, v2.4s}, [%[m]]\n"
         : "+m" (m)
         : [m] "r" (m), [s] "r" (s)
-        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q16", "q17", "q18", "q19", "memory"
+        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q16", "q17", "q18", "q19"
     );
     PROFILER_END_SECTION
 }
 
 void MatrixScale(s32* m, s32* s)
 {
-    PROFILER_SECTION(matscale)
+    // assumes s has a length of atleast 4
+    __asm__ volatile
+    (
+        "ld1 {v0.16b, v1.16b, v2.16b}, [%[m]]\n"
+        "ld1 {v3.16b}, [%[s]]\n"
 
-    m[0] = ((s64)s[0]*m[0]) >> 12;
-    m[1] = ((s64)s[0]*m[1]) >> 12;
-    m[2] = ((s64)s[0]*m[2]) >> 12;
-    m[3] = ((s64)s[0]*m[3]) >> 12;
+        "smull v5.2d, v0.2s, v3.4s[0]\n"
+        "smull2 v6.2d, v0.4s, v3.4s[0]\n"
 
-    m[4] = ((s64)s[1]*m[4]) >> 12;
-    m[5] = ((s64)s[1]*m[5]) >> 12;
-    m[6] = ((s64)s[1]*m[6]) >> 12;
-    m[7] = ((s64)s[1]*m[7]) >> 12;
+        "shrn v0.2s, v5.2d, #12\n"
+        "shrn2 v0.4s, v6.2d, #12\n"
 
-    m[8] = ((s64)s[2]*m[8]) >> 12;
-    m[9] = ((s64)s[2]*m[9]) >> 12;
-    m[10] = ((s64)s[2]*m[10]) >> 12;
-    m[11] = ((s64)s[2]*m[11]) >> 12;
+        "smull v5.2d, v1.2s, v3.4s[1]\n"
+        "smull2 v6.2d, v1.4s, v3.4s[1]\n"
 
-    PROFILER_END_SECTION
+        "shrn v1.2s, v5.2d, #12\n"
+        "shrn2 v1.4s, v6.2d, #12\n"
+
+        "smull v5.2d, v2.2s, v3.4s[2]\n"
+        "smull2 v6.2d, v2.4s, v3.4s[2]\n"
+
+        "shrn v2.2s, v5.2d, #12\n"
+        "shrn2 v2.4s, v6.2d, #12\n"
+
+        "st1 {v0.16b, v1.16b, v2.16b}, [%[m]]\n"
+
+        : "+m" (m)
+        : [m] "r" (m), [s] "r" (s)
+        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"
+    );
 }
 
 void MatrixTranslate(s32* m, s32* s)
 {
-    PROFILER_SECTION(matTranslate)
-    m[12] += ((s64)s[0]*m[0] + (s64)s[1]*m[4] + (s64)s[2]*m[8]) >> 12;
-    m[13] += ((s64)s[0]*m[1] + (s64)s[1]*m[5] + (s64)s[2]*m[9]) >> 12;
-    m[14] += ((s64)s[0]*m[2] + (s64)s[1]*m[6] + (s64)s[2]*m[10]) >> 12;
-    m[15] += ((s64)s[0]*m[3] + (s64)s[1]*m[7] + (s64)s[2]*m[11]) >> 12;
-    PROFILER_END_SECTION
+    // assumes s has a length of atleast 4
+    __asm__ volatile
+    (
+        "ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [%[m]]\n"
+        "ld1 {v4.16b}, [%[s]]\n"
+
+        "smull v5.2d, v0.2s, v4.4s[0]\n"
+        "smull2 v6.2d, v0.4s, v4.4s[0]\n"
+        
+        "smlal v5.2d, v1.2s, v4.4s[1]\n"
+        "smlal2 v6.2d, v1.4s, v4.4s[1]\n"
+
+        "smlal v5.2d, v2.2s, v4.4s[2]\n"
+        "smlal2 v6.2d, v2.4s, v4.4s[2]\n"
+
+        "shrn v5.2s, v5.2d, #12\n"
+        "shrn2 v5.4s, v6.2d, #12\n"
+
+        "add v3.4s, v3.4s, v5.4s\n"
+
+        "st1 {v3.4s}, [%[mLastCol]]\n"
+        : "+m" (m)
+        : [m] "r" (m), [mLastCol] "r" (m + 4*3), [s] "r" (s)
+        : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"
+    );
 }
 
 void UpdateClipMatrix()
