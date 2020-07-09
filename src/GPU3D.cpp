@@ -140,7 +140,7 @@ const u8 CmdNumParams[256] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-typedef union
+union CmdFIFOEntry
 {
     u64 _contents;
     struct
@@ -149,7 +149,7 @@ typedef union
         u8 Command;
     };
 
-} CmdFIFOEntry;
+};
 
 FIFO<CmdFIFOEntry, 256> CmdFIFO;
 FIFO<CmdFIFOEntry, 4> CmdPIPE;
@@ -229,7 +229,7 @@ void UpdateClipMatrix();
 
 
 u32 PolygonMode;
-s16 CurVertex[3];
+s16 CurVertex[4]; // last one is padding
 u8 VertexColor[3];
 s16 TexCoords[2];
 s16 RawTexCoords[2];
@@ -742,7 +742,7 @@ void MatrixMult4x3(s32* m, s32* s)
         "ld1 {v4.4s, v5.4s, v6.4s}, [%[s]]\n"
         // we could also use shifting for this one
         // but the combined latency of shift + add, is comparable to smlal
-        "dup v7.4s, %w[c]\n"
+        "movi v7.4s, #0x10, lsl #8\n"
 
         "smull v16.2d, v0.2s, v4.4s[0]\n"
         "smull2 v17.2d, v0.4s, v4.4s[0]\n"
@@ -785,7 +785,7 @@ void MatrixMult4x3(s32* m, s32* s)
 
         "st1 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[m]]\n"
         : "+m" (m)
-        : [m] "r" (m), [s] "r" (s), [c] "r" (0x1000)
+        : [m] "r" (m), [s] "r" (s)
         : "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23"
     );
     PROFILER_END_SECTION
@@ -1110,14 +1110,17 @@ int ClipAgainstPlane(Vertex* vertices, int nverts, int clipstart)
             vertices[c++] = vtx;
     }
 
-    // checkme
-    for (int i = 0; i < c; i++)
+    if (attribs)
     {
-        Vertex* vtx = &vertices[i];
+        // checkme
+        for (int i = 0; i < c; i++)
+        {
+            Vertex* vtx = &vertices[i];
 
-        vtx->Color[0] &= ~0xFFF; vtx->Color[0] += 0xFFF;
-        vtx->Color[1] &= ~0xFFF; vtx->Color[1] += 0xFFF;
-        vtx->Color[2] &= ~0xFFF; vtx->Color[2] += 0xFFF;
+            vtx->Color[0] &= ~0xFFF; vtx->Color[0] += 0xFFF;
+            vtx->Color[1] &= ~0xFFF; vtx->Color[1] += 0xFFF;
+            vtx->Color[2] &= ~0xFFF; vtx->Color[2] += 0xFFF;
+        }
     }
 
     return c;
@@ -1136,14 +1139,39 @@ int ClipPolygon(Vertex* vertices, int nverts, int clipstart)
     // some vertices that should get Y=-0x1000 get Y=0x1000 for some reason on hardware. it doesn't make sense.
     // clipping seems to process the Y plane before the X plane.
 
+    uint32x4_t atleastOneOutside = vdupq_n_u32(0);
+    uint32x4_t allClippedPositively = vdupq_n_u32(0xFFFFFFFF);
+    uint32x4_t allClippedNegatively = vdupq_n_u32(0xFFFFFFFF);
+    for (int i = 0; i < nverts; i++)
+    {
+        int32x4_t vert = vld1q_s32(vertices[i].Position);
+
+        int32x4_t wValue = vdupq_n_s32(vert[3]);
+
+        uint32x4_t positiveClipPlane = vcgtq_s32(vert, wValue);
+        uint32x4_t negativeClipPlane = vcltq_s32(vert, vnegq_s32(wValue));
+
+        atleastOneOutside = vorrq_u32(atleastOneOutside, vorrq_u32(positiveClipPlane, negativeClipPlane));
+        allClippedPositively = vandq_u32(positiveClipPlane, allClippedPositively);
+        allClippedNegatively = vandq_u32(negativeClipPlane, allClippedNegatively);
+    }
+
+    if (vmaxvq_u32(allClippedPositively) || vmaxvq_u32(allClippedNegatively))
+        return 0;
+
+    u64 atleastOneOutsideScalar = vreinterpret_u64_u16(vmovn_u32(atleastOneOutside))[0];
+
     // Z clipping
-    nverts = ClipAgainstPlane<2, attribs>(vertices, nverts, clipstart);
+    if (atleastOneOutsideScalar & (1ULL << 32))
+        nverts = ClipAgainstPlane<2, attribs>(vertices, nverts, clipstart);
 
     // Y clipping
-    nverts = ClipAgainstPlane<1, attribs>(vertices, nverts, clipstart);
+    if (atleastOneOutsideScalar & (1ULL << 16))
+        nverts = ClipAgainstPlane<1, attribs>(vertices, nverts, clipstart);
 
     // X clipping
-    nverts = ClipAgainstPlane<0, attribs>(vertices, nverts, clipstart);
+    if (atleastOneOutsideScalar & (1ULL << 0))
+        nverts = ClipAgainstPlane<0, attribs>(vertices, nverts, clipstart);
 
     return nverts;
 }
@@ -1573,14 +1601,40 @@ void SubmitVertex()
 {
     PROFILER_SECTION(submitVertex)
 
-    s64 vertex[4] = {(s64)CurVertex[0], (s64)CurVertex[1], (s64)CurVertex[2], 0x1000};
     Vertex* vertextrans = &TempVertexBuffer[VertexNumInPoly];
 
     UpdateClipMatrix();
-    vertextrans->Position[0] = (vertex[0]*ClipMatrix[0] + vertex[1]*ClipMatrix[4] + vertex[2]*ClipMatrix[8] + vertex[3]*ClipMatrix[12]) >> 12;
-    vertextrans->Position[1] = (vertex[0]*ClipMatrix[1] + vertex[1]*ClipMatrix[5] + vertex[2]*ClipMatrix[9] + vertex[3]*ClipMatrix[13]) >> 12;
-    vertextrans->Position[2] = (vertex[0]*ClipMatrix[2] + vertex[1]*ClipMatrix[6] + vertex[2]*ClipMatrix[10] + vertex[3]*ClipMatrix[14]) >> 12;
-    vertextrans->Position[3] = (vertex[0]*ClipMatrix[3] + vertex[1]*ClipMatrix[7] + vertex[2]*ClipMatrix[11] + vertex[3]*ClipMatrix[15]) >> 12;
+    __asm__ volatile
+    (
+        "movi v5.4s, #0x10, lsl #8\n" // 1 << 12
+
+        "ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [%[ClipMatrix]]\n"
+        "ld1 {v4.8b}, [%[curvertex]]\n"
+
+        "sxtl v4.4s, v4.4h\n"
+        "ins v4.4s[3], v5.4s[0]\n"
+
+        "smull v5.2d, v0.2s, v4.4s[0]\n"
+        "smlal v5.2d, v1.2s, v4.4s[1]\n"
+        "smlal v5.2d, v2.2s, v4.4s[2]\n"
+        "smlal v5.2d, v3.2s, v4.4s[3]\n"
+        "smull2 v6.2d, v0.4s, v4.4s[0]\n"
+        "smlal2 v6.2d, v1.4s, v4.4s[1]\n"
+        "smlal2 v6.2d, v2.4s, v4.4s[2]\n"
+        "smlal2 v6.2d, v3.4s, v4.4s[3]\n"
+
+        "shrn v5.2s, v5.2d, #12\n"
+        "shrn2 v5.4s, v6.2d, #12\n"
+
+        "st1 {v5.16b}, [%[vertexTrans]]\n"
+        :
+            "=m" (vertextrans->Position)
+        :
+            [curvertex] "r" (CurVertex), [vertexTrans] "r" (vertextrans->Position),
+            [ClipMatrix] "r" (ClipMatrix)
+        :
+            "q0", "q1", "q2", "q3", "q5", "q6"
+    );
 
     // this probably shouldn't be.
     // the way color is handled during clipping needs investigation. TODO
@@ -1590,8 +1644,8 @@ void SubmitVertex()
 
     if ((TexParam >> 30) == 3)
     {
-        vertextrans->TexCoords[0] = ((vertex[0]*TexMatrix[0] + vertex[1]*TexMatrix[4] + vertex[2]*TexMatrix[8]) >> 24) + RawTexCoords[0];
-        vertextrans->TexCoords[1] = ((vertex[0]*TexMatrix[1] + vertex[1]*TexMatrix[5] + vertex[2]*TexMatrix[9]) >> 24) + RawTexCoords[1];
+        vertextrans->TexCoords[0] = (((s64)CurVertex[0]*TexMatrix[0] + (s64)CurVertex[1]*TexMatrix[4] + (s64)CurVertex[2]*TexMatrix[8]) >> 24) + RawTexCoords[0];
+        vertextrans->TexCoords[1] = (((s64)CurVertex[0]*TexMatrix[1] + (s64)CurVertex[1]*TexMatrix[5] + (s64)CurVertex[2]*TexMatrix[9]) >> 24) + RawTexCoords[1];
     }
     else
     {
@@ -2009,7 +2063,9 @@ void ExecuteCommand()
 
     // commands that stall the polygon pipeline: 0x32, 0x70, 0x40
 
-    if (CmdNumParams[entry.Command] <= 1)
+    u8 numParams = CmdNumParams[entry.Command];
+
+    if (numParams <= 1)
     {
         switch (entry.Command)
         {
@@ -2350,7 +2406,7 @@ void ExecuteCommand()
         ExecParams[ExecParamCount] = entry.Param;
         ExecParamCount++;
 
-        if (ExecParamCount >= (u32)CmdNumParams[entry.Command])
+        if (ExecParamCount >= numParams)
         {
             AddCycles(1);
             /*printf("[GXS:%08X] 0x%02X,  ", GXStat, entry.Command);
