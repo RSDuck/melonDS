@@ -2084,7 +2084,7 @@ void RenderFrame()
     {
         Platform::Semaphore_Post(Sema_RenderStart);
     }
-    else
+    else if (!RenderFrameIdentical)
     {
         ClearBuffers();
         RenderPolygons(false, &RenderPolygonRAM[0], RenderNumPolygons);
@@ -2099,8 +2099,16 @@ void RenderThreadFunc()
         if (!RenderThreadRunning) return;
 
         RenderThreadRendering = true;
-        ClearBuffers();
-        RenderPolygons(true, &RenderPolygonRAM[0], RenderNumPolygons);
+        if (!RenderFrameIdentical)
+        {
+            ClearBuffers();
+            RenderPolygons(true, &RenderPolygonRAM[0], RenderNumPolygons);
+        }
+        else
+        {
+            for (int i = 0; i < 192; i++)
+                Platform::Semaphore_Post(Sema_ScanlineCount);
+        }
 
         Platform::Semaphore_Post(Sema_RenderDone);
         RenderThreadRendering = false;

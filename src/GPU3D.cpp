@@ -174,6 +174,8 @@ u8 FogDensityTable[32];
 
 u32 ClearAttr1, ClearAttr2;
 
+bool RenderFrameIdentical;
+
 u32 RenderDispCnt;
 u8 RenderAlphaRef;
 
@@ -379,6 +381,8 @@ void Reset()
     NumPolygons = 0;
     NumOpaquePolygons = 0;
 
+    RenderFrameIdentical = false;
+
     // TODO: confirm initial polyid/color/fog values
     ClearAttr1 = 0x3F000000;
     ClearAttr2 = 0x00007FFF;
@@ -395,6 +399,8 @@ void Reset()
 
 void DoSavestate(Savestate* file)
 {
+    RenderFrameIdentical = false;
+
     file->Section("GP3D");
 
     CmdFIFO.DoSavestate(file);
@@ -2774,6 +2780,20 @@ void VBlank()
                 }
 
                 RenderNumPolygons = NumPolygons;
+
+                RenderFrameIdentical = false;
+            }
+            else
+            {
+                RenderFrameIdentical = RenderDispCnt == DispCnt
+                    && RenderAlphaRef == AlphaRef
+                    && RenderClearAttr1 == ClearAttr1
+                    && RenderClearAttr2 == ClearAttr2
+                    && RenderFogColor == FogColor
+                    && RenderFogOffset == FogOffset * 0x200
+                    && memcmp(RenderEdgeTable, EdgeTable, 8*2) == 0
+                    && memcmp(RenderFogDensityTable + 1, FogDensityTable, 32) == 0
+                    && memcmp(RenderToonTable, ToonTable, 32*2) == 0;
             }
 
             RenderDispCnt = DispCnt;

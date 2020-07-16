@@ -76,6 +76,8 @@ typedef struct
 
 } Polygon;
 
+extern bool RenderFrameIdentical;
+
 extern u32 RenderDispCnt;
 extern u8 RenderAlphaRef;
 
